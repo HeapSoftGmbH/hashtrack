@@ -1,10 +1,10 @@
 # witness-pi
 
-[![npm version](https://img.shields.io/npm/v/witness-pi?label=npm)](https://www.npmjs.com/package/witness-pi) [![source](https://img.shields.io/badge/source-GitHub-blue)](https://github.com/HeapSoftGmbH/witness)
-
 Persistent agent Analytics. Cost & usage tracking for your pi agent. Including models, provider, tokens, cost, skills, tools.
 
 witness-pi is an extension that records the tokens and dollars spent in every pi session and keeps a running total for each repository. You can check your spend at any time, see which models, tools and skills use the most, and find the sessions that cost the most.
+
+[![npm version](https://img.shields.io/npm/v/witness-pi?label=npm)](https://www.npmjs.com/package/witness-pi) [![source](https://img.shields.io/badge/source-GitHub-blue)](https://github.com/HeapSoftGmbH/witness)
 
 ## Why use it
 
