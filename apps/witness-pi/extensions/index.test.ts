@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -43,11 +49,12 @@ function setup(model?: { provider: string; name: string }) {
 	return { status, emit, ctx };
 }
 
-const record = (): AgentTurnRecord[] =>
-	readFileSync(join(cwd, ".witness", "usage.jsonl"), "utf8")
-		.trim()
-		.split("\n")
-		.map((l) => JSON.parse(l) as AgentTurnRecord);
+const record = (file = "usage.jsonl"): AgentTurnRecord[] => {
+	const raw = readFileSync(join(cwd, ".witness", file), "utf8").trim();
+	return raw
+		? raw.split("\n").map((l) => JSON.parse(l) as AgentTurnRecord)
+		: [];
+};
 
 let cwd: string;
 let prevCwd: string;
@@ -193,6 +200,123 @@ describe("witness-pi adapter", () => {
 			reason: 0,
 			cst: 0,
 		});
+	});
+
+	// Config lives at <pi root>/witness/config.json, i.e. ~/.pi/witness/config.json.
+	const cloudConfig = (config?: object) => {
+		const root = mkdtempSync(join(tmpdir(), "witness-pi-root-"));
+		const agentDir = join(root, "agent");
+		mkdirSync(agentDir, { recursive: true });
+		if (config) {
+			mkdirSync(join(root, "witness"), { recursive: true });
+			writeFileSync(
+				join(root, "witness", "config.json"),
+				JSON.stringify(config),
+			);
+		}
+		process.env.PI_CODING_AGENT_DIR = agentDir;
+		return () => {
+			delete process.env.PI_CODING_AGENT_DIR;
+			rmSync(root, { recursive: true, force: true });
+		};
+	};
+
+	test("cloud config from ~/.pi/witness/config.json is uploaded on settle", async () => {
+		const cleanup = cloudConfig({
+			url: "https://api.example.com",
+			token: "t",
+		});
+		const calls: string[] = [];
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = ((url: string) => {
+			calls.push(url);
+			return Promise.resolve(new Response("{}"));
+		}) as typeof fetch;
+		try {
+			const { emit } = setup();
+			await emit("session_start", { reason: "user" });
+			await emit("agent_start", {});
+			await emit("turn_end", {});
+			await emit("agent_settled");
+			expect(calls).toEqual(["https://api.example.com/api/ingest"]);
+		} finally {
+			globalThis.fetch = originalFetch;
+			cleanup();
+		}
+	});
+
+	test("token-only config falls back to the default API base", async () => {
+		const cleanup = cloudConfig({ token: "t" });
+		const calls: string[] = [];
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = ((url: string) => {
+			calls.push(url);
+			return Promise.resolve(new Response("{}"));
+		}) as typeof fetch;
+		try {
+			const { emit } = setup();
+			await emit("session_start", { reason: "user" });
+			await emit("agent_start", {});
+			await emit("turn_end", {});
+			await emit("agent_settled");
+			expect(calls).toEqual(["https://witness-rho-rust.vercel.app/api/ingest"]);
+		} finally {
+			globalThis.fetch = originalFetch;
+			cleanup();
+		}
+	});
+
+	test("startup syncs unsynced records in one batch", async () => {
+		const cleanup = cloudConfig({
+			url: "https://api.example.com",
+			token: "t",
+		});
+		mkdirSync(join(cwd, ".witness"), { recursive: true });
+		writeFileSync(
+			join(cwd, ".witness", "usage.jsonl"),
+			`${JSON.stringify({ t: "t", sid: "old", sn: "", h: "pi", mod: "m", rep: cwd, turns: [] })}\n`,
+		);
+		const bodies: string[] = [];
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = ((_url: string, init?: RequestInit) => {
+			bodies.push(String(init?.body));
+			return Promise.resolve(new Response("{}"));
+		}) as typeof fetch;
+		try {
+			const { emit } = setup();
+			await emit("session_start", { reason: "user" });
+			expect(bodies).toHaveLength(1);
+			expect(
+				(JSON.parse(bodies[0] ?? "") as { records: { sid: string }[] }).records,
+			).toHaveLength(1);
+			expect(record()).toHaveLength(0); // moved out of usage.jsonl
+			expect(record("synced.jsonl")[0]?.sid).toBe("old");
+		} finally {
+			globalThis.fetch = originalFetch;
+			cleanup();
+		}
+	});
+
+	test("no config file: local only, no upload", async () => {
+		const cleanup = cloudConfig();
+		const calls: string[] = [];
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = ((url: string) => {
+			calls.push(url);
+			return Promise.resolve(new Response("{}"));
+		}) as typeof fetch;
+		try {
+			const { emit } = setup();
+			await emit("session_start", { reason: "user" });
+			await emit("agent_start", {});
+			await emit("turn_end", {});
+			await emit("agent_settled");
+			expect(calls).toEqual([]);
+			expect(record()).toHaveLength(1);
+		} finally {
+			globalThis.fetch = originalFetch;
+			cleanup();
+		}
 	});
 
 	test("status formats k and M tokens", async () => {

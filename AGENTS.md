@@ -27,14 +27,15 @@ bun run lint:fix
 `.witness/usage.jsonl` — one `AgentTurnRecord` JSON per agent burst, append-only, shared by all harnesses:
 
 - Short keys (`t`, `sid`, `sn`, `h`, `mod`, `rep`, `ti`, `tools`, `totalUsage`) are **frozen**. New fields may be added; existing keys are never renamed or removed.
+- Two files in `.witness/`: `usage.jsonl` is the pending queue (not uploaded yet), `synced.jsonl` is the archive of uploaded records. `readRecords()` returns both, in that order — dashboards and totals never lose history.
 - Storage: `<git-root>/.witness/usage.jsonl`. Repo identity = git remote URL (fallback: git root, then cwd).
 - Old/unknown lines must keep parsing — `loadHistory` skips malformed lines; keep that behavior.
-- Buffer turns in memory, flush once on idle (`agent_settled`-equivalent) and shutdown. One `appendFileSync` per burst — concurrent agent sessions on the same repo stay safe. Trade-off: hard kill loses the unflushed burst.
+- Buffer turns in memory, flush once on idle (`agent_settled`-equivalent) and shutdown. One `appendFileSync` per burst — concurrent agent sessions on the same repo stay safe. Trade-off: hard kill loses the unflushed burst. Exception: uploading appends to `synced.jsonl` and then rewrites `usage.jsonl` (tmp + rename), so a session appending in that window can lose a line.
 
 ## Adding a harness adapter
 
 1. New `apps/witness-<harness>` package, `"witness": "workspace:*"` dependency. Import shared types from `witness` (re-exported from `packages/types`).
-2. On session start: `new Session({ sessionId, harness: "<name>" })`.
+2. On session start: `new Session({ sessionId, harness: "<name>" })`, then `await session.syncPending()` to push records left unsynced. Cloud sync is opt-in via `cloud: { url, token }` — the adapter reads the token (auth flow is the adapter's job), core does the upload.
 3. Map the harness's turn-end/usage events to `session.addTurn({ index, tools, totalUsage })` — tool results often carry their own usage; sum assistant + tool usage into `totalUsage`.
 4. Flush on idle and shutdown.
 5. Keep the adapter thin — all storage logic lives in `packages/witness`. If an adapter needs new core behavior, add it to core so every harness gets it.

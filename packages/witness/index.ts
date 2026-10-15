@@ -1,5 +1,11 @@
 import { execSync } from "node:child_process";
-import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
+import {
+	appendFileSync,
+	mkdirSync,
+	readFileSync,
+	renameSync,
+	writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 
 export interface Usage {
@@ -22,6 +28,11 @@ interface Turn {
 	ti: number; // Turn Index
 	tools: Array<Tool>; // Tool Calls
 	totalUsage: Usage; // Total Usage
+}
+
+export interface CloudConfig {
+	url?: string; // API base URL; defaults to DEFAULT_CLOUD_URL
+	token?: string; // Bearer token; auth flow added by the caller
 }
 
 export interface AgentTurnRecord {
@@ -53,22 +64,29 @@ export class Session {
 	private readonly harnessVersion?: string;
 	private readonly path: string;
 	private readonly fileName: string;
+	private readonly syncedFileName: string;
 	private readonly rep: string;
 	private readonly branch: string;
 	private readonly user: { name: string; email: string };
+	private readonly cloud?: CloudConfig = {
+		url: "https://witness-rho-rust.vercel.app",
+	};
 
 	constructor({
 		sessionId,
 		harness,
 		harnessVersion,
+		cloud,
 	}: {
 		sessionId: string;
 		harness: string;
 		harnessVersion?: string;
+		cloud?: CloudConfig;
 	}) {
 		this.sessionId = sessionId;
 		this.harness = harness;
 		this.harnessVersion = harnessVersion;
+		this.cloud = { ...this.cloud, ...cloud };
 
 		const root = this.gitRoot();
 		this.rep = this.gitRemote() ?? root;
@@ -77,6 +95,7 @@ export class Session {
 
 		this.path = join(root, ".witness");
 		this.fileName = "usage.jsonl";
+		this.syncedFileName = "synced.jsonl";
 		mkdirSync(this.path, { recursive: true });
 		this.loadHistory();
 	}
@@ -110,23 +129,57 @@ export class Session {
 	}
 
 	public readRecords(): AgentTurnRecord[] {
-		let content: string;
-		try {
-			content = readFileSync(join(this.path, this.fileName), "utf8");
-		} catch {
-			return [];
-		}
 		const records: AgentTurnRecord[] = [];
-		for (const line of content.split("\n")) {
+		const lines = [
+			...this.rawLines(this.fileName),
+			...this.rawLines(this.syncedFileName),
+		];
+		for (const line of lines) {
 			if (!line.trim()) continue;
 			try {
-				const rec = JSON.parse(line);
-				records.push(rec);
+				records.push(JSON.parse(line) as AgentTurnRecord);
 			} catch {
 				// skip malformed line
 			}
 		}
 		return records;
+	}
+
+	private rawLines(fileName: string): string[] {
+		try {
+			return readFileSync(join(this.path, fileName), "utf8").split("\n");
+		} catch {
+			return [];
+		}
+	}
+
+	private archive(lines: string[]): void {
+		const moved = new Set(lines);
+		appendFileSync(
+			join(this.path, this.syncedFileName),
+			lines.map((line) => `${line}\n`).join(""),
+		);
+		const file = join(this.path, this.fileName);
+		const kept = this.rawLines(this.fileName).filter(
+			(line) => !moved.has(line),
+		);
+		writeFileSync(`${file}.tmp`, kept.join("\n"));
+		renameSync(`${file}.tmp`, file);
+	}
+
+	public async syncPending(): Promise<void> {
+		const pending: { line: string; record: AgentTurnRecord }[] = [];
+		for (const line of this.rawLines(this.fileName)) {
+			try {
+				pending.push({ line, record: JSON.parse(line) as AgentTurnRecord });
+			} catch {
+				// skip malformed line
+			}
+		}
+		if (pending.length === 0) return;
+		if (await this.ingest(pending.map((p) => p.record))) {
+			this.archive(pending.map((p) => p.line));
+		}
 	}
 
 	private loadHistory() {
@@ -190,18 +243,40 @@ export class Session {
 		this.currentAgentTurn?.turns.push({ ti: index || 0, tools, totalUsage });
 	}
 
-	public flush() {
+	public async flush(): Promise<void> {
 		if (!this.currentAgentTurn) return;
 
 		this.currentAgentTurn.metadata = this.metadata;
 		this.currentAgentTurn.skills = this.skills;
 		this.currentAgentTurn.sn = this.sessionName;
 
-		appendFileSync(
-			join(this.path, this.fileName),
-			`${JSON.stringify(this.currentAgentTurn)}\n`,
-		);
-
+		const record = this.currentAgentTurn;
+		const line = JSON.stringify(record);
+		appendFileSync(join(this.path, this.fileName), `${line}\n`);
 		this.currentAgentTurn = undefined;
+
+		if (await this.ingest([record])) this.archive([line]);
+	}
+
+	private async ingest(records: AgentTurnRecord[]): Promise<boolean> {
+		if (!this.cloud?.token || !this.cloud.url || records.length === 0)
+			return false;
+		try {
+			const res = await fetch(
+				`${(this.cloud.url).replace(/\/$/, "")}/api/ingest`,
+				{
+					method: "POST",
+					headers: {
+						"content-type": "application/json",
+						authorization: `Bearer ${this.cloud.token}`,
+					},
+					body: JSON.stringify({ records }),
+				},
+			);
+			return res.ok;
+		} catch {
+			// shortcut: ingest is best-effort; a failed record stays in usage.jsonl for the next startup
+			return false;
+		}
 	}
 }

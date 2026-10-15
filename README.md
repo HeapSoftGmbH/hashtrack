@@ -24,6 +24,22 @@ The file is append-only and uses a shared format, so adapters for other agents (
 
 Turns are kept in memory and written in a single append when the agent goes idle and when it shuts down. This keeps writes safe when several agent sessions run on the same repo at once. The trade-off: if the agent is killed hard (e.g. `kill -9`), the current unsaved run is lost.
 
+##### Cloud sync
+
+Opt in by creating `~/.pi/witness/config.json` (the pi root comes from `PI_CODING_AGENT_DIR`, so overriding the agent dir moves it too):
+
+```json
+{ "token": "..." }
+```
+
+`token` is required; `url` is optional and defaults to `https://witness-rho-rust.vercel.app`. When the file is present, records are `POST`ed to `<url>/api/ingest` as `{ "records": [...] }` with `Authorization: Bearer <token>`.
+- Every flushed record is uploaded immediately; on success it moves from `usage.jsonl` to `synced.jsonl`.
+- On session start, everything still in `usage.jsonl` (records from failed uploads, or from runs without cloud config) is uploaded in one batch, then moved.
+- `usage.jsonl` is therefore the pending queue and `synced.jsonl` the uploaded archive. Readers (dashboard, repo totals) see both.
+- The local file stays the source of truth: a failed upload is ignored and leaves the record in `usage.jsonl` for the next startup, and it never blocks the local write.
+
+Auth flow (login, token refresh) is not implemented yet — the token is read as-is.
+
 ##### Dashboard server
 
 `/witness-pi:show` starts a small HTTP server on `127.0.0.1:4444`, reachable only from your own machine. It serves the bundled viewer and an `/api/records` endpoint that returns the records for the current repo. It stops when the session ends.

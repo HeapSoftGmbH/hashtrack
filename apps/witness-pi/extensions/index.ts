@@ -1,6 +1,7 @@
 import { execSync, spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
+import { homedir } from "node:os";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -9,9 +10,27 @@ import {
 	VERSION,
 } from "@earendil-works/pi-coding-agent";
 import { compactNumberFormatter, dollarNumberFormatter } from "lib";
-import { Session, type Tool, type Usage } from "witness";
+import { type CloudConfig, Session, type Tool, type Usage } from "witness";
 
 const PORT = 4444;
+
+function readCloudConfig(): CloudConfig | undefined {
+	const agentDir =
+		process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
+	try {
+		const cfg = JSON.parse(
+			readFileSync(join(dirname(agentDir), "witness", "config.json"), "utf8"),
+		);
+		if (typeof cfg.token !== "string") return undefined;
+		// omit url when absent so the core default applies
+		return {
+			token: cfg.token,
+			...(typeof cfg.url === "string" ? { url: cfg.url } : {}),
+		};
+	} catch {
+		return undefined;
+	}
+}
 
 export default function main(pi: ExtensionAPI) {
 	let session: Session;
@@ -64,15 +83,17 @@ export default function main(pi: ExtensionAPI) {
 		);
 	}
 
-	pi.on("session_start", (event, c) => {
+	pi.on("session_start", async (event, c) => {
 		ctx = c;
 		session = new Session({
 			sessionId: ctx.sessionManager.getSessionId(),
 			harness: "pi",
 			harnessVersion: piVersion ?? harnessVersion(),
+			cloud: readCloudConfig(),
 		});
 		session.addMetadata({ start_reason: event.reason });
 		renderStatus();
+		await session.syncPending();
 	});
 
 	pi.on("input", (event) => {
@@ -150,7 +171,7 @@ export default function main(pi: ExtensionAPI) {
 	});
 
 	pi.on("agent_settled", async () => {
-		session.flush();
+		await session.flush();
 		renderStatus();
 	});
 
@@ -234,6 +255,6 @@ export default function main(pi: ExtensionAPI) {
 	pi.on("session_shutdown", async () => {
 		server?.closeAllConnections?.();
 		server?.close();
-		session.flush();
+		await session.flush();
 	});
 }
