@@ -19,12 +19,13 @@
 		"prepack": "bun run build"
 	},
 	"devDependencies": {
-		"@types/bun": "^1.4.2",
+		"@earendil-works/pi-coding-agent": "^1.2.0",
+		"@types/bun": "^1.4.3",
 		"lib": "workspace:*",
 		"witness": "workspace:*"
 	},
 	"peerDependencies": {
-		"@earendil-works/pi-coding-agent": "^1.0.0"
+		"@earendil-works/pi-coding-agent": "^1.2.0"
 	},
 	"pi": {
 		"extensions": [
