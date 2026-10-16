@@ -312,6 +312,45 @@ describe("cloud upload", () => {
 		]);
 	});
 
+	test("syncPending splits 501 records into 500 + 1 requests", async () => {
+		const session = cloudSession();
+		const lines = Array.from({ length: 501 }, (_, i) =>
+			JSON.stringify(rec(`s${i}`)),
+		);
+		writeFileSync(witnessFile(), `${lines.join("\n")}\n`);
+
+		await session.syncPending();
+
+		expect(calls).toHaveLength(2);
+		expect(sent(0).records).toHaveLength(500);
+		expect(sent(1).records).toHaveLength(1);
+		expect(stored("synced.jsonl")).toHaveLength(501);
+		expect(stored("usage.jsonl")).toEqual([]);
+	});
+
+	test("chunks are uploaded in parallel", async () => {
+		let inFlight = 0;
+		let peak = 0;
+		globalThis.fetch = (() => {
+			peak = Math.max(peak, ++inFlight);
+			return new Promise<Response>((resolve) =>
+				setTimeout(() => {
+					inFlight--;
+					resolve(new Response("{}"));
+				}, 5),
+			);
+		}) as unknown as typeof fetch;
+
+		const session = cloudSession();
+		writeFileSync(
+			witnessFile(),
+			`${Array.from({ length: 501 }, (_, i) => JSON.stringify(rec(`s${i}`))).join("\n")}\n`,
+		);
+		await session.syncPending();
+
+		expect(peak).toBe(2);
+	});
+
 	test("syncPending: nothing pending means no request", async () => {
 		const session = cloudSession();
 		writeFileSync(

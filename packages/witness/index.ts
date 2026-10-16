@@ -259,22 +259,28 @@ export class Session {
 	}
 
 	private async ingest(records: AgentTurnRecord[]): Promise<boolean> {
-		if (!this.cloud?.token || !this.cloud.url || records.length === 0)
-			return false;
+		const { token, url } = this.cloud ?? {};
+		if (!token || !url || records.length === 0) return false;
+
 		try {
-			const res = await fetch(
-				`${(this.cloud.url).replace(/\/$/, "")}/api/ingest`,
-				{
-					method: "POST",
-					headers: {
-						"content-type": "application/json",
-						authorization: `Bearer ${this.cloud.token}`,
-					},
-					body: JSON.stringify({ records }),
-					signal: AbortSignal.timeout(4_000),
-				},
+			const chunks: AgentTurnRecord[][] = [];
+			for (let i = 0; i < records.length; i += 500)
+				chunks.push(records.slice(i, i + 500));
+
+			const responses = await Promise.all(
+				chunks.map((chunk) =>
+					fetch(`${url.replace(/\/$/, "")}/api/ingest`, {
+						method: "POST",
+						headers: {
+							"content-type": "application/json",
+							authorization: `Bearer ${token}`,
+						},
+						body: JSON.stringify({ records: chunk }),
+						signal: AbortSignal.timeout(4_000),
+					}),
+				),
 			);
-			return res.ok;
+			return responses.every((res) => res.ok);
 		} catch {
 			// shortcut: ingest is best-effort; a failed record stays in usage.jsonl for the next startup
 			return false;
