@@ -1,5 +1,5 @@
 import { execSync, spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { homedir } from "node:os";
 import { dirname, extname, join } from "node:path";
@@ -17,19 +17,25 @@ const PORT = 4444;
 function readCloudConfig(): CloudConfig | undefined {
 	const agentDir =
 		process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
+	const file = join(dirname(agentDir), "witness", "config.json");
+
+	let cfg: { token?: unknown; url?: unknown };
 	try {
-		const cfg = JSON.parse(
-			readFileSync(join(dirname(agentDir), "witness", "config.json"), "utf8"),
-		);
-		if (typeof cfg.token !== "string") return undefined;
-		// omit url when absent so the core default applies
-		return {
-			token: cfg.token,
-			...(typeof cfg.url === "string" ? { url: cfg.url } : {}),
-		};
+		cfg = JSON.parse(readFileSync(file, "utf8"));
 	} catch {
 		return undefined;
 	}
+
+	if (typeof cfg.token !== "string") return undefined;
+
+	try {
+		chmodSync(file, 0o600);
+	} catch {}
+
+	return {
+		token: cfg.token,
+		...(typeof cfg.url === "string" ? { url: cfg.url } : {}),
+	};
 }
 
 export default function main(pi: ExtensionAPI) {

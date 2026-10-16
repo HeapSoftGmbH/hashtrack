@@ -1,13 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
+	chmodSync,
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
 	rmSync,
+	statSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { AgentTurnRecord } from "witness";
 import main from "./index";
@@ -58,15 +60,20 @@ const record = (file = "usage.jsonl"): AgentTurnRecord[] => {
 
 let cwd: string;
 let prevCwd: string;
+let prevAgentDir: string | undefined;
 
 beforeEach(() => {
 	cwd = mkdtempSync(join(tmpdir(), "witness-pi-cwd-"));
 	prevCwd = process.cwd();
 	process.chdir(cwd);
 	cwd = process.cwd();
+	prevAgentDir = process.env.PI_CODING_AGENT_DIR;
+	process.env.PI_CODING_AGENT_DIR = join(cwd, "agent");
 });
 
 afterEach(() => {
+	if (prevAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+	else process.env.PI_CODING_AGENT_DIR = prevAgentDir;
 	process.chdir(prevCwd);
 	rmSync(cwd, { recursive: true, force: true });
 });
@@ -216,7 +223,6 @@ describe("witness-pi adapter", () => {
 		}
 		process.env.PI_CODING_AGENT_DIR = agentDir;
 		return () => {
-			delete process.env.PI_CODING_AGENT_DIR;
 			rmSync(root, { recursive: true, force: true });
 		};
 	};
@@ -241,6 +247,23 @@ describe("witness-pi adapter", () => {
 			expect(calls).toEqual(["https://api.example.com/api/ingest"]);
 		} finally {
 			globalThis.fetch = originalFetch;
+			cleanup();
+		}
+	});
+
+	test("the token file is tightened to owner-only on read", async () => {
+		const cleanup = cloudConfig({ token: "t" });
+		const file = join(
+			dirname(process.env.PI_CODING_AGENT_DIR ?? ""),
+			"witness",
+			"config.json",
+		);
+		chmodSync(file, 0o644); // start world-readable, as a plain create would
+		try {
+			const { emit } = setup();
+			await emit("session_start", { reason: "user" });
+			expect(statSync(file).mode & 0o777).toBe(0o600);
+		} finally {
 			cleanup();
 		}
 	});

@@ -271,6 +271,7 @@ export class Session {
 						authorization: `Bearer ${this.cloud.token}`,
 					},
 					body: JSON.stringify({ records }),
+					signal: AbortSignal.timeout(4_000),
 				},
 			);
 			return res.ok;

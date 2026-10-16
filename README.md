@@ -32,6 +32,8 @@ Opt in by creating `~/.pi/witness/config.json` (the pi root comes from `PI_CODIN
 { "token": "..." }
 ```
 
+The file holds a Bearer token, so witness tightens it to owner-only (`chmod 600`) the first time it reads it.
+
 `token` is required; `url` is optional and defaults to `https://witness-rho-rust.vercel.app`. When the file is present, records are `POST`ed to `<url>/api/ingest` as `{ "records": [...] }` with `Authorization: Bearer <token>`.
 - Every flushed record is uploaded immediately; on success it moves from `usage.jsonl` to `synced.jsonl`.
 - On session start, everything still in `usage.jsonl` (records from failed uploads, or from runs without cloud config) is uploaded in one batch, then moved.

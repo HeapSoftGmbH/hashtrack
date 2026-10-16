@@ -230,6 +230,16 @@ describe("cloud upload", () => {
 		expect(session.readRecords()).toHaveLength(1); // dashboard still sees it
 	});
 
+	test("upload carries an abort timeout", async () => {
+		const session = cloudSession();
+		session.startAgent({ dateTimeISOString: "t", model: "m" });
+		session.addTurn({ tools: [], totalUsage: usage(10, 0.1) });
+		await session.flush();
+		const signal = calls[0]?.init?.signal;
+		expect(signal).toBeInstanceOf(AbortSignal);
+		expect(signal?.aborted).toBe(false);
+	});
+
 	test("token only: uses the built-in default API base", async () => {
 		const session = new Session({
 			sessionId: "s1",
