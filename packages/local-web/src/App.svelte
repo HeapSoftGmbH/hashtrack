@@ -11,8 +11,11 @@
 	import './app.css';
 
 	onMount(async () => {
+		// the viewer server scopes /api/records to a repository via ?dir=
+		const dir = new URLSearchParams(location.search).get('dir');
+		const query = dir ? `?dir=${encodeURIComponent(dir)}` : '';
 		try {
-			records.data.splice(0, records.data.length, ...(await (await fetch('/api/records')).json()));
+			records.data.splice(0, records.data.length, ...(await (await fetch(`/api/records${query}`)).json()));
 		} finally {
 			records.loaded = true;
 		}

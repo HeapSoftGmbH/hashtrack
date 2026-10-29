@@ -21,8 +21,9 @@
 	"scripts": {
 		"build": "bun build",
 		"build:pi": "bun run --cwd apps/witness-pi build",
+		"build:opencode": "bun run --cwd apps/witness-opencode build",
 		"build:web": "bun run --cwd packages/local-web build",
-		"test:extensions": "bun test packages/witness apps/witness-pi",
+		"test:extensions": "bun test packages/witness packages/lib apps/witness-pi apps/witness-opencode",
 		"test:web": "bun run --cwd packages/local-web test",
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",

@@ -32,6 +32,15 @@ jobs:
       - name: lint
         run: bun lint
 
+      # both published packages ship only dist/, so a broken bundle
+      # must fail before the release tag
+      - name: build pi extension
+        run: bun run build:pi
+
+      - name: build opencode plugin
+        run: bun run build:opencode
+
+      # after the builds, so a broken bundle and a broken test fail the same run
       - name: test
         run: bun test:extensions && bun test:web
 
@@ -62,6 +71,7 @@ jobs:
       - name: install
         run: bun install --frozen-lockfile
 
+      # <app>-v<version> selects apps/<app>: witness-pi and witness-opencode share this job
       - name: resolve tag
         run: |
           APP="${GITHUB_REF_NAME%-v*}"

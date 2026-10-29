@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
+	existsSync,
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
@@ -8,7 +9,12 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type AgentTurnRecord, Session, type Usage } from "./index";
+import {
+	type AgentTurnRecord,
+	readRepoRecords,
+	Session,
+	type Usage,
+} from "./index";
 
 const usage = (tok: number, cst: number): Usage => ({
 	in: 0,
@@ -92,6 +98,27 @@ describe("loadHistory", () => {
 		expect(rec.turns).toHaveLength(1);
 		expect(rec.mod).toBe("m1"); // model remembered from last startAgent
 		expect(session.totalCost).toBeCloseTo(0.3);
+	});
+});
+
+describe("readRepoRecords", () => {
+	test("returns pending records before synced ones", () => {
+		mkdirSync(join(cwd, ".witness"), { recursive: true });
+		// earlier timestamps after the first line: file order, not a descending `t` sort
+		writeFileSync(
+			witnessFile(),
+			`${JSON.stringify(rec("earlier-pending"))}\n${JSON.stringify({ ...rec("pending"), t: "2026-01-02T00:00:00Z" })}\n`,
+		);
+		writeFileSync(
+			join(cwd, ".witness", "synced.jsonl"),
+			`${JSON.stringify({ ...rec("synced"), t: "2026-01-01T00:00:00Z" })}\n`,
+		);
+
+		expect(readRepoRecords(cwd).map((r) => r.sid)).toEqual([
+			"earlier-pending",
+			"pending",
+			"synced",
+		]);
 	});
 });
 
@@ -381,5 +408,25 @@ describe("storage path", () => {
 		session.addTurn({ tools: [], totalUsage: usage(1, 0) });
 		session.flush();
 		expect(readFileSync(witnessFile(), "utf8")).toContain('"sid":"s1"');
+	});
+
+	test("cwd overrides process.cwd() for the repo", async () => {
+		const other = mkdtempSync(join(tmpdir(), "witness-other-"));
+		try {
+			const session = new Session({
+				sessionId: "s2",
+				harness: "pi",
+				cwd: other,
+			});
+			session.startAgent({ dateTimeISOString: "t", model: "m" });
+			session.addTurn({ tools: [], totalUsage: usage(1, 0) });
+			await session.flush();
+			expect(
+				readFileSync(join(other, ".witness", "usage.jsonl"), "utf8"),
+			).toContain('"sid":"s2"');
+			expect(existsSync(join(cwd, ".witness", "usage.jsonl"))).toBe(false);
+		} finally {
+			rmSync(other, { recursive: true, force: true });
+		}
 	});
 });

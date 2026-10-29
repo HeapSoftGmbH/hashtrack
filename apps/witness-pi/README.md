@@ -18,7 +18,7 @@ witness-pi is an extension that records the tokens and dollars spent in every pi
 ### Live cost in the status bar
 
 ```text
-💰 Witnessed: $1.23 · 45.6K TOK
+⣏ 45.6K · $1.23
 ```
 
 Shows the total dollars and tokens for the current repository across all sessions. It updates after every agent turn.

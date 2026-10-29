@@ -9,7 +9,12 @@ import {
 	type ExtensionContext,
 	VERSION,
 } from "@earendil-works/pi-coding-agent";
-import { compactNumberFormatter, dollarNumberFormatter } from "lib";
+import {
+	compactNumberFormatter,
+	dollarNumberFormatter,
+	witnessColorRgb,
+	witnessMark,
+} from "lib";
 import { type CloudConfig, Session, type Tool, type Usage } from "witness";
 
 const PORT = 4444;
@@ -80,13 +85,16 @@ export default function main(pi: ExtensionAPI) {
 	}
 
 	function renderStatus(): void {
-		ctx.ui.setStatus(
-			"witness",
-			ctx.ui.theme.fg(
-				"dim",
-				`💰 Witnessed: ${dollarNumberFormatter.format(session.totalCost)} · ${compactNumberFormatter.format(session.totalTokens)} TOK`,
-			),
+		const { theme } = ctx.ui;
+		const mark = theme.style(witnessMark, {
+			// the favicon orange, as a pi-tui rgb Color
+			fg: { kind: "rgb", ...witnessColorRgb },
+		});
+		const totals = theme.fg(
+			"dim",
+			`${compactNumberFormatter.format(session.totalTokens)} · ${dollarNumberFormatter.format(session.totalCost)}`,
 		);
+		ctx.ui.setStatus("witness", `${mark} ${totals}`);
 	}
 
 	pi.on("session_start", async (event, c) => {

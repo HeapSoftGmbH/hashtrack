@@ -11,6 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { witnessColorRgb, witnessMark } from "lib";
 import type { AgentTurnRecord } from "witness";
 import main from "./index";
 
@@ -19,7 +20,10 @@ type FakeCtx = {
 	model?: { provider: string; name: string };
 	ui: {
 		setStatus: (id: string, text: string) => void;
-		theme: { fg: (style: string, text: string) => string };
+		theme: {
+			fg: (style: string, text: string) => string;
+			style: (text: string, options: unknown) => string;
+		};
 	};
 };
 
@@ -29,12 +33,19 @@ type Handler = (event: PiEvent | undefined, ctx: FakeCtx) => unknown;
 function setup(model?: { provider: string; name: string }) {
 	const handlers = new Map<string, Handler>();
 	const status: string[] = [];
+	const styles: unknown[] = [];
 	const ctx: FakeCtx = {
 		sessionManager: { getSessionId: () => "sess-1" },
 		model,
 		ui: {
 			setStatus: (id, text) => status.push(`${id}:${text}`),
-			theme: { fg: (_style, text) => text },
+			theme: {
+				fg: (_style, text) => text,
+				style: (text, options) => {
+					styles.push(options);
+					return text;
+				},
+			},
 		},
 	};
 	const pi = {
@@ -48,7 +59,7 @@ function setup(model?: { provider: string; name: string }) {
 		ctxOverride?: FakeCtx,
 	): Promise<unknown> =>
 		Promise.resolve(handlers.get(name)?.(event, ctxOverride ?? ctx));
-	return { status, emit, ctx };
+	return { status, emit, ctx, styles };
 }
 
 const record = (file = "usage.jsonl"): AgentTurnRecord[] => {
@@ -80,10 +91,16 @@ afterEach(() => {
 
 describe("witness-pi adapter", () => {
 	test("full lifecycle: start, rename, turn, settle", async () => {
-		const { status, emit } = setup({ provider: "anthropic", name: "claude" });
+		const { status, emit, styles } = setup({
+			provider: "anthropic",
+			name: "claude",
+		});
 
 		await emit("session_start", { reason: "user" });
-		expect(status[0]).toBe("witness:💰 Witnessed: $0.00 · 0 TOK");
+		expect(status[0]).toBe(`witness:${witnessMark} 0 · $0.00`);
+		expect(styles.at(-1)).toEqual({
+			fg: { kind: "rgb", ...witnessColorRgb },
+		});
 
 		await emit("session_info_changed", { name: "renamed" });
 		await emit("agent_start", {});
@@ -115,7 +132,7 @@ describe("witness-pi adapter", () => {
 		});
 		await emit("agent_settled");
 
-		expect(status.at(-1)).toBe("witness:💰 Witnessed: $0.12 · 165 TOK");
+		expect(status.at(-1)).toBe(`witness:${witnessMark} 165 · $0.12`);
 		const recs = record();
 		expect(recs).toHaveLength(1);
 		const rec = recs[0];
@@ -350,12 +367,12 @@ describe("witness-pi adapter", () => {
 		await emit("turn_end", {
 			message: { role: "assistant", usage: { totalTokens: 1500 } },
 		});
-		expect(status.at(-1)).toBe("witness:💰 Witnessed: $0.00 · 1.5K TOK");
+		expect(status.at(-1)).toBe(`witness:${witnessMark} 1.5K · $0.00`);
 
 		await emit("turn_end", {
 			message: { role: "assistant", usage: { totalTokens: 1500000 } },
 		});
-		expect(status.at(-1)).toBe("witness:💰 Witnessed: $0.00 · 1.5M TOK");
+		expect(status.at(-1)).toBe(`witness:${witnessMark} 1.5M · $0.00`);
 	});
 
 	describe("skill tracking", () => {

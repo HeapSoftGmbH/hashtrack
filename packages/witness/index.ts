@@ -50,6 +50,61 @@ export interface AgentTurnRecord {
 	user?: { name: string; email: string }; // Git user config at session start
 }
 
+function git(cwd: string | undefined, cmd: string): string {
+	try {
+		return execSync(cmd, {
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "ignore"],
+			cwd,
+		}).trim();
+	} catch {
+		return "";
+	}
+}
+
+/** Repository root for a working directory: the git root, else the directory itself. */
+export function repoRoot(cwd?: string): string {
+	return git(cwd, "git rev-parse --show-toplevel") || cwd || process.cwd();
+}
+
+function rawLines(path: string): string[] {
+	try {
+		return readFileSync(path, "utf8").split("\n");
+	} catch {
+		return [];
+	}
+}
+
+/**
+ * Read every record in `<git-root>/.witness`, pending first and synced second.
+ * Malformed lines are skipped, so old or partially written records never break a reader.
+ * Read-only: unlike the Session constructor, this never creates the `.witness` directory.
+ */
+export function readRepoRecords(cwd?: string): AgentTurnRecord[] {
+	return readWitnessRecords(repoRoot(cwd));
+}
+
+/**
+ * Read every record in `<root>/.witness` for a directory that is already a repository
+ * root, so readers that resolved the root themselves do not run git twice.
+ */
+export function readWitnessRecords(root: string): AgentTurnRecord[] {
+	const path = join(root, ".witness");
+	const records: AgentTurnRecord[] = [];
+	for (const line of [
+		...rawLines(join(path, "usage.jsonl")),
+		...rawLines(join(path, "synced.jsonl")),
+	]) {
+		if (!line.trim()) continue;
+		try {
+			records.push(JSON.parse(line) as AgentTurnRecord);
+		} catch {
+			// skip malformed line
+		}
+	}
+	return records;
+}
+
 export class Session {
 	public sessionName: string = "";
 	public totalTokens: number = 0;
@@ -71,22 +126,26 @@ export class Session {
 	private readonly cloud?: CloudConfig = {
 		url: "https://witness-rho-rust.vercel.app",
 	};
+	private readonly cwd?: string;
 
 	constructor({
 		sessionId,
 		harness,
 		harnessVersion,
 		cloud,
+		cwd,
 	}: {
 		sessionId: string;
 		harness: string;
 		harnessVersion?: string;
 		cloud?: CloudConfig;
+		cwd?: string; // directory the harness ran in; defaults to process.cwd()
 	}) {
 		this.sessionId = sessionId;
 		this.harness = harness;
 		this.harnessVersion = harnessVersion;
 		this.cloud = { ...this.cloud, ...cloud };
+		this.cwd = cwd;
 
 		const root = this.gitRoot();
 		this.rep = this.gitRemote() ?? root;
@@ -101,18 +160,11 @@ export class Session {
 	}
 
 	private git(cmd: string): string {
-		try {
-			return execSync(cmd, {
-				encoding: "utf8",
-				stdio: ["ignore", "pipe", "ignore"],
-			}).trim();
-		} catch {
-			return "";
-		}
+		return git(this.cwd, cmd);
 	}
 
 	private gitRoot(): string {
-		return this.git("git rev-parse --show-toplevel") || process.cwd();
+		return repoRoot(this.cwd);
 	}
 
 	private gitRemote(): string | undefined {
@@ -129,28 +181,11 @@ export class Session {
 	}
 
 	public readRecords(): AgentTurnRecord[] {
-		const records: AgentTurnRecord[] = [];
-		const lines = [
-			...this.rawLines(this.fileName),
-			...this.rawLines(this.syncedFileName),
-		];
-		for (const line of lines) {
-			if (!line.trim()) continue;
-			try {
-				records.push(JSON.parse(line) as AgentTurnRecord);
-			} catch {
-				// skip malformed line
-			}
-		}
-		return records;
+		return readRepoRecords(this.cwd);
 	}
 
 	private rawLines(fileName: string): string[] {
-		try {
-			return readFileSync(join(this.path, fileName), "utf8").split("\n");
-		} catch {
-			return [];
-		}
+		return rawLines(join(this.path, fileName));
 	}
 
 	private archive(lines: string[]): void {

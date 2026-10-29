@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { defineConfig } from 'vitest/config';
-import { Session } from 'witness';
+import { readRepoRecords } from 'witness';
 
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import tailwindcss from '@tailwindcss/vite';
@@ -9,10 +9,13 @@ function usageApi(): import('vite').Plugin {
 	return {
 		name: 'witness-usage-api',
 		configureServer(server) {
-			server.middlewares.use('/api/records', (_req, res) => {
+			server.middlewares.use('/api/records', (req, res) => {
 				try {
+					// ?dir= scopes the read to a repository, same as the plugin's viewer
+					const directory =
+						new URL(req.url ?? '/', 'http://localhost').searchParams.get('dir') ?? undefined;
 					res.setHeader('content-type', 'application/json');
-					res.end(JSON.stringify(new Session({ sessionId: 'dev', harness: 'dev' }).readRecords()));
+					res.end(JSON.stringify(readRepoRecords(directory)));
 				} catch {
 					res.statusCode = 404;
 					res.end('');

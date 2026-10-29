@@ -66,14 +66,34 @@ Teams can share it via project settings (`-l`): pi installs missing packages aut
 
 ## Other agents
 
-`apps/witness-claude`, `apps/witness-copilot`, `apps/witness-opencode` are placeholders for adapters using the same core. To add one: new `apps/witness-<harness>` package, depend on `witness: workspace:*`, call `Session` on the harness's turn-end events, flush on idle/shutdown. See [AGENTS.md](AGENTS.md).
+### OpenCode
+
+`apps/witness-opencode` is a plugin for [opencode](https://opencode.ai) v2 using the same core and the same `.witness/usage.jsonl` file. Add it to `opencode.json`:
+
+```json
+{ "plugins": ["witness-opencode"] }
+```
+
+For local development, build the plugin once and point the entry at the package directory (local paths must be directories):
+
+```bash
+bun run build:opencode
+```
+
+```json
+{ "plugins": ["/absolute/path/to/witness/apps/witness-opencode"] }
+```
+
+The plugin shows the current repo total (`⣏ 12K · $0.42`, the favicon as an orange braille mark in terminals) in the terminal UI and in OpenCode Desktop (which draws the favicon itself), and adds a `/witness` command that opens the detailed web dashboard in your browser. Cloud sync reads `~/.config/opencode/witness/config.json` (same `{ "token", "url" }` shape as pi). See [apps/witness-opencode/README.md](apps/witness-opencode/README.md).
+
+`apps/witness-claude` and `apps/witness-copilot` are still placeholders for adapters using the same core. To add one: new `apps/witness-<harness>` package, depend on `witness: workspace:*`, call `Session` on the harness's turn-end events, flush on idle/shutdown. See [AGENTS.md](AGENTS.md).
 
 ## CI
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs two jobs:
 
-- **quality** — every push (except release tags): install, `bun audit`, format check, lint, tests.
-- **release** — on tag `<app>-vX.Y.Z`: publishes `apps/<app>` to npm, after checking the tag matches the package's `version`.
+- **quality** — every push: install, format check, lint, build both extensions, then run the tests.
+- **release** — on tag `<app>-vX.Y.Z`: builds `apps/<app>` via its `prepack` and publishes it to npm.
 
 Releasing an extension (per-package versions, independent of each other):
 
@@ -85,13 +105,24 @@ git commit -am "witness-pi 1.2.4" && git tag witness-pi-v1.2.4
 git push origin main --tags
 ```
 
+The opencode plugin releases the same way, with its own version and tag:
+
+```bash
+cd apps/witness-opencode
+npm version 0.1.0 --no-git-tag-version
+cd ../..
+git commit -am "witness-opencode 0.1.0" && git tag witness-opencode-v0.1.0
+git push origin main --tags
+```
+
 A new `apps/witness-<harness>` adapter needs no pipeline changes — tagging `witness-claude-v0.1.0` publishes `apps/witness-claude`.
 
 ## Development
 
 ```bash
 bun install
-bun test
+bun run test:extensions   # packages/witness + both adapters
+bun run test:web          # packages/local-web (vitest)
 bun run lint
 ```
 
@@ -104,7 +135,8 @@ bun run build
 
 Bun workspaces monorepo:
 
-- `packages/witness` — core `Session` class (record schema, storage, repo totals)
-- `packages/types` — shared `Usage` / `Tool` / `AgentTurnRecord` interfaces
+- `packages/witness` — core `Session` class (record schema, storage, repo totals) and the shared `Usage` / `Tool` / `AgentTurnRecord` interfaces (re-exported to every adapter)
+- `packages/lib` — formatters and brand constants shared by the adapters
 - `apps/witness-pi` — pi extension (`extensions/index.ts` maps pi events to `Session`)
-- `apps/local-web` — the dashboard UI
+- `apps/witness-opencode` — opencode plugin (`src/index.ts` maps opencode events to `Session`)
+- `packages/local-web` — the dashboard UI
