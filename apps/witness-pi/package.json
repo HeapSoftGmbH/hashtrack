@@ -1,6 +1,6 @@
 {
 	"name": "witness-pi",
-	"version": "0.0.22",
+	"version": "0.0.23",
 	"type": "module",
 	"module": "./dist/index.js",
 	"files": [
