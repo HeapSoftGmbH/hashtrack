@@ -1,6 +1,6 @@
 {
 	"name": "@hashtrack/opencode",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"type": "module",
 	"main": "./dist/index.js",
 	"exports": {
@@ -37,15 +37,15 @@
 		"solid-js": ">=1.9.0"
 	},
 	"devDependencies": {
+		"@hashtrack/core": "workspace:*",
+		"@hashtrack/lib": "workspace:*",
 		"@opencode/plugin": "2.2.1",
 		"@opencode/theme": "2.2.1",
 		"@opentui/core": "0.7.0",
 		"@opentui/solid": "0.7.0",
 		"@types/bun": "^1.4.3",
-		"@hashtrack/lib": "workspace:*",
 		"solid-js": "^1.9.17",
 		"vite": "^7.3.7",
-		"vite-plugin-solid": "^2.11.10",
-		"@hashtrack/core": "workspace:*"
+		"vite-plugin-solid": "^2.11.10"
 	}
 }

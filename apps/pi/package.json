@@ -1,6 +1,6 @@
 {
 	"name": "@hashtrack/pi",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"type": "module",
 	"module": "./dist/index.js",
 	"files": [
@@ -20,9 +20,9 @@
 	},
 	"devDependencies": {
 		"@earendil-works/pi-coding-agent": "^1.2.0",
-		"@types/bun": "^1.4.3",
+		"@hashtrack/core": "workspace:*",
 		"@hashtrack/lib": "workspace:*",
-		"@hashtrack/core": "workspace:*"
+		"@types/bun": "^1.4.3"
 	},
 	"peerDependencies": {
 		"@earendil-works/pi-coding-agent": "^1.2.0"

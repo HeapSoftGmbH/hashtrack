@@ -14,7 +14,7 @@
     },
     "apps/opencode": {
       "name": "@hashtrack/opencode",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "devDependencies": {
         "@hashtrack/core": "workspace:*",
         "@hashtrack/lib": "workspace:*",
@@ -36,7 +36,7 @@
     },
     "apps/pi": {
       "name": "@hashtrack/pi",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "devDependencies": {
         "@earendil-works/pi-coding-agent": "^1.2.0",
         "@hashtrack/core": "workspace:*",
