@@ -16,7 +16,7 @@ export function isoDateNDaysAgo(n: number): string {
 
 /**
  * Extract model from the <provider>/<model> string
- * @param providerModel String provided by the witness tracking, format is <provider>/<model>
+ * @param providerModel String provided by the hashtrack tracking, format is <provider>/<model>
  * @returns returns the model from the string
  */
 export function getModelFromSourceString(providerModel: string): string {
@@ -25,7 +25,7 @@ export function getModelFromSourceString(providerModel: string): string {
 
 /**
  * Extract provider from the <provider>/<model> string
- * @param providerModel String provided by the witness tracking, format is <provider>/<model>
+ * @param providerModel String provided by the hashtrack tracking, format is <provider>/<model>
  * @returns returns the provdier from the string
  */
 export function getProviderFromSourceString(providerModel: string): string {

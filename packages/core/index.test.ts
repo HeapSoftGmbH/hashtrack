@@ -11,7 +11,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	type AgentTurnRecord,
+	readCloudRecords,
 	readRepoRecords,
+	repoIdentity,
+	resolveRepoRecords,
 	Session,
 	type Usage,
 } from "./index";
@@ -26,7 +29,7 @@ const usage = (tok: number, cst: number): Usage => ({
 	cst,
 });
 
-const witnessFile = () => join(cwd, ".witness", "usage.jsonl");
+const hashtrackFile = () => join(cwd, ".hashtrack", "usage.jsonl");
 
 const rec = (sid: string): AgentTurnRecord => ({
 	t: "2026-01-01T00:00:00Z",
@@ -42,7 +45,7 @@ let cwd: string;
 let prevCwd: string;
 
 beforeEach(() => {
-	cwd = mkdtempSync(join(tmpdir(), "witness-cwd-"));
+	cwd = mkdtempSync(join(tmpdir(), "hashtrack-cwd-"));
 	prevCwd = process.cwd();
 	process.chdir(cwd);
 	cwd = process.cwd();
@@ -68,9 +71,9 @@ describe("loadHistory", () => {
 			],
 		};
 		const foreign = { ...valid, rep: "https://github.com/other/repo" };
-		mkdirSync(join(cwd, ".witness"), { recursive: true });
+		mkdirSync(join(cwd, ".hashtrack"), { recursive: true });
 		writeFileSync(
-			witnessFile(),
+			hashtrackFile(),
 			`${JSON.stringify(valid)}\nnot json at all\n${JSON.stringify(foreign)}\n\n`,
 		);
 
@@ -92,7 +95,7 @@ describe("loadHistory", () => {
 		session.addTurn({ index: 0, tools: [], totalUsage: usage(20, 0.2) });
 		session.flush();
 
-		const lines = readFileSync(witnessFile(), "utf8").trim().split("\n");
+		const lines = readFileSync(hashtrackFile(), "utf8").trim().split("\n");
 		expect(lines).toHaveLength(2);
 		const rec = JSON.parse(lines[1] ?? "") as AgentTurnRecord;
 		expect(rec.turns).toHaveLength(1);
@@ -103,14 +106,14 @@ describe("loadHistory", () => {
 
 describe("readRepoRecords", () => {
 	test("returns pending records before synced ones", () => {
-		mkdirSync(join(cwd, ".witness"), { recursive: true });
+		mkdirSync(join(cwd, ".hashtrack"), { recursive: true });
 		// earlier timestamps after the first line: file order, not a descending `t` sort
 		writeFileSync(
-			witnessFile(),
+			hashtrackFile(),
 			`${JSON.stringify(rec("earlier-pending"))}\n${JSON.stringify({ ...rec("pending"), t: "2026-01-02T00:00:00Z" })}\n`,
 		);
 		writeFileSync(
-			join(cwd, ".witness", "synced.jsonl"),
+			join(cwd, ".hashtrack", "synced.jsonl"),
 			`${JSON.stringify({ ...rec("synced"), t: "2026-01-01T00:00:00Z" })}\n`,
 		);
 
@@ -146,7 +149,7 @@ describe("addTurn + flush", () => {
 		session.flush();
 		session.flush(); // second flush is a no-op
 
-		const lines = readFileSync(witnessFile(), "utf8").trim().split("\n");
+		const lines = readFileSync(hashtrackFile(), "utf8").trim().split("\n");
 		expect(lines).toHaveLength(1);
 		const rec = JSON.parse(lines[0] as string) as AgentTurnRecord;
 		expect(rec.sid).toBe("s1");
@@ -172,7 +175,7 @@ describe("addTurn + flush", () => {
 		session.addTurn({ tools: [], totalUsage: usage(7, 0.07) });
 		expect(session.totalTokens).toBe(7);
 		session.flush();
-		const lines = readFileSync(witnessFile(), "utf8").trim().split("\n");
+		const lines = readFileSync(hashtrackFile(), "utf8").trim().split("\n");
 		expect(lines).toHaveLength(2);
 		expect(JSON.parse(lines[1] ?? "") as AgentTurnRecord).toMatchObject({
 			mod: "m1",
@@ -190,8 +193,8 @@ describe("addTurn + flush", () => {
 			rep: cwd,
 			turns: [{ ti: 0, tools: [], totalUsage: usage(100, 1) }],
 		};
-		mkdirSync(join(cwd, ".witness"), { recursive: true });
-		writeFileSync(witnessFile(), `${JSON.stringify(old)}\n`);
+		mkdirSync(join(cwd, ".hashtrack"), { recursive: true });
+		writeFileSync(hashtrackFile(), `${JSON.stringify(old)}\n`);
 
 		const session = new Session({ sessionId: "s2", harness: "pi" });
 		session.startAgent({
@@ -202,9 +205,128 @@ describe("addTurn + flush", () => {
 		session.flush();
 
 		expect(session.totalTokens).toBe(101);
-		expect(readFileSync(witnessFile(), "utf8").trim().split("\n")).toHaveLength(
-			2,
+		expect(
+			readFileSync(hashtrackFile(), "utf8").trim().split("\n"),
+		).toHaveLength(2);
+	});
+});
+
+describe("cloud read", () => {
+	const originalFetch = globalThis.fetch;
+	let calls: { url: string; init?: RequestInit }[] = [];
+
+	beforeEach(() => {
+		calls = [];
+	});
+
+	afterEach(() => {
+		globalThis.fetch = originalFetch;
+	});
+
+	const remote = (sid: string): AgentTurnRecord => ({
+		...rec(sid),
+		rep: "https://github.com/example/repo",
+	});
+
+	const respond = (body: unknown, status = 200) => {
+		globalThis.fetch = ((url: string, init?: RequestInit) => {
+			calls.push({ url, init });
+			return Promise.resolve(Response.json(body, { status }));
+		}) as unknown as typeof fetch;
+	};
+
+	test("repoIdentity falls back to the working directory", () => {
+		expect(repoIdentity(cwd)).toBe(cwd);
+	});
+
+	test("no token: no request", async () => {
+		globalThis.fetch = (() => {
+			throw new Error("should not fetch");
+		}) as unknown as typeof fetch;
+
+		expect(
+			await readCloudRecords(
+				{ url: "https://api.example.com" },
+				{ rep: "repo" },
+			),
+		).toBeUndefined();
+		expect(calls).toHaveLength(0);
+	});
+
+	test("pulls records for one repo, with bearer auth and a range", async () => {
+		respond({ records: [remote("one")] });
+
+		const records = await readCloudRecords(
+			{ url: "https://api.example.com/", token: "tok" },
+			{
+				rep: "https://github.com/example/repo",
+				since: "2026-01-01T00:00:00.000Z",
+				until: "2026-02-01T00:00:00.000Z",
+			},
 		);
+
+		expect(records?.map((r) => r.sid)).toEqual(["one"]);
+		expect(calls[0]?.url).toContain("https://api.example.com/api/records?");
+		expect(calls[0]?.url).toContain(
+			"rep=https%3A%2F%2Fgithub.com%2Fexample%2Frepo",
+		);
+		expect(calls[0]?.url).toContain("since=2026-01-01T00%3A00%3A00.000Z");
+		expect(calls[0]?.url).toContain("until=2026-02-01T00%3A00%3A00.000Z");
+		const headers = calls[0]?.init?.headers as Record<string, string>;
+		expect(headers.authorization).toBe("Bearer tok");
+		expect(calls[0]?.init?.signal).toBeInstanceOf(AbortSignal);
+	});
+
+	test("uses the cloud even when it has no records, instead of local ones", async () => {
+		mkdirSync(join(cwd, ".hashtrack"), { recursive: true });
+		writeFileSync(hashtrackFile(), `${JSON.stringify(rec("local"))}\n`);
+		respond({ records: [] });
+
+		const result = await resolveRepoRecords({
+			cwd,
+			cloud: { url: "https://api.example.com", token: "tok" },
+		});
+
+		expect(result.source).toBe("cloud");
+		expect(result.records).toEqual([]);
+	});
+
+	test("falls back to local records when the request fails", async () => {
+		mkdirSync(join(cwd, ".hashtrack"), { recursive: true });
+		writeFileSync(hashtrackFile(), `${JSON.stringify(rec("local"))}\n`);
+		respond({ error: "nope" }, 500);
+
+		const result = await resolveRepoRecords({
+			cwd,
+			cloud: { url: "https://api.example.com", token: "tok" },
+		});
+
+		expect(result.source).toBe("local");
+		expect(result.records.map((r) => r.sid)).toEqual(["local"]);
+	});
+
+	test("falls back to local records on a malformed response", async () => {
+		mkdirSync(join(cwd, ".hashtrack"), { recursive: true });
+		writeFileSync(hashtrackFile(), `${JSON.stringify(rec("local"))}\n`);
+		respond({ records: "nope" });
+
+		const result = await resolveRepoRecords({
+			cwd,
+			cloud: { url: "https://api.example.com", token: "tok" },
+		});
+
+		expect(result.source).toBe("local");
+		expect(result.records.map((r) => r.sid)).toEqual(["local"]);
+	});
+
+	test("no cloud config: reads local records", async () => {
+		mkdirSync(join(cwd, ".hashtrack"), { recursive: true });
+		writeFileSync(hashtrackFile(), `${JSON.stringify(rec("local"))}\n`);
+
+		const result = await resolveRepoRecords({ cwd });
+
+		expect(result.source).toBe("local");
+		expect(result.records.map((r) => r.sid)).toEqual(["local"]);
 	});
 });
 
@@ -232,7 +354,7 @@ describe("cloud upload", () => {
 		});
 
 	const stored = (file = "usage.jsonl") =>
-		readFileSync(join(cwd, ".witness", file), "utf8")
+		readFileSync(join(cwd, ".hashtrack", file), "utf8")
 			.trim()
 			.split("\n")
 			.filter(Boolean)
@@ -310,7 +432,7 @@ describe("cloud upload", () => {
 		session.startAgent({ dateTimeISOString: "t", model: "m" });
 		session.addTurn({ tools: [], totalUsage: usage(10, 0.1) });
 		await session.flush();
-		expect(readFileSync(witnessFile(), "utf8")).toContain('"sid":"s1"');
+		expect(readFileSync(hashtrackFile(), "utf8")).toContain('"sid":"s1"');
 		expect(() => stored("synced.jsonl")).toThrow(); // never created
 	});
 
@@ -319,7 +441,7 @@ describe("cloud upload", () => {
 		const one = rec("one");
 		const two = rec("two");
 		writeFileSync(
-			witnessFile(),
+			hashtrackFile(),
 			`${JSON.stringify(one)}\nnot json\n${JSON.stringify(two)}\n`,
 		);
 
@@ -328,7 +450,7 @@ describe("cloud upload", () => {
 		expect(calls).toHaveLength(1);
 		expect(calls[0]?.url).toBe("https://api.example.com/api/ingest");
 		expect(sent(0).records.map((r) => r.sid)).toEqual(["one", "two"]);
-		expect(readFileSync(witnessFile(), "utf8")).toBe("not json\n");
+		expect(readFileSync(hashtrackFile(), "utf8")).toBe("not json\n");
 		expect(stored("synced.jsonl").map((r: AgentTurnRecord) => r.sid)).toEqual([
 			"one",
 			"two",
@@ -344,7 +466,7 @@ describe("cloud upload", () => {
 		const lines = Array.from({ length: 501 }, (_, i) =>
 			JSON.stringify(rec(`s${i}`)),
 		);
-		writeFileSync(witnessFile(), `${lines.join("\n")}\n`);
+		writeFileSync(hashtrackFile(), `${lines.join("\n")}\n`);
 
 		await session.syncPending();
 
@@ -370,7 +492,7 @@ describe("cloud upload", () => {
 
 		const session = cloudSession();
 		writeFileSync(
-			witnessFile(),
+			hashtrackFile(),
 			`${Array.from({ length: 501 }, (_, i) => JSON.stringify(rec(`s${i}`))).join("\n")}\n`,
 		);
 		await session.syncPending();
@@ -381,7 +503,7 @@ describe("cloud upload", () => {
 	test("syncPending: nothing pending means no request", async () => {
 		const session = cloudSession();
 		writeFileSync(
-			join(cwd, ".witness", "synced.jsonl"),
+			join(cwd, ".hashtrack", "synced.jsonl"),
 			`${JSON.stringify(rec("done"))}\n`,
 		);
 		await session.syncPending();
@@ -394,7 +516,7 @@ describe("cloud upload", () => {
 			return Promise.resolve(new Response("nope", { status: 500 }));
 		}) as typeof fetch;
 		const session = cloudSession();
-		writeFileSync(witnessFile(), `${JSON.stringify(rec("pending"))}\n`);
+		writeFileSync(hashtrackFile(), `${JSON.stringify(rec("pending"))}\n`);
 		await session.syncPending();
 		expect(calls).toHaveLength(1);
 		expect(stored("usage.jsonl")[0]?.sid).toBe("pending");
@@ -402,16 +524,16 @@ describe("cloud upload", () => {
 });
 
 describe("storage path", () => {
-	test("writes into .witness under the git root", () => {
+	test("writes into .hashtrack under the git root", () => {
 		const session = new Session({ sessionId: "s1", harness: "pi" });
 		session.startAgent({ dateTimeISOString: "t", model: "m" });
 		session.addTurn({ tools: [], totalUsage: usage(1, 0) });
 		session.flush();
-		expect(readFileSync(witnessFile(), "utf8")).toContain('"sid":"s1"');
+		expect(readFileSync(hashtrackFile(), "utf8")).toContain('"sid":"s1"');
 	});
 
 	test("cwd overrides process.cwd() for the repo", async () => {
-		const other = mkdtempSync(join(tmpdir(), "witness-other-"));
+		const other = mkdtempSync(join(tmpdir(), "hashtrack-other-"));
 		try {
 			const session = new Session({
 				sessionId: "s2",
@@ -422,11 +544,56 @@ describe("storage path", () => {
 			session.addTurn({ tools: [], totalUsage: usage(1, 0) });
 			await session.flush();
 			expect(
-				readFileSync(join(other, ".witness", "usage.jsonl"), "utf8"),
+				readFileSync(join(other, ".hashtrack", "usage.jsonl"), "utf8"),
 			).toContain('"sid":"s2"');
-			expect(existsSync(join(cwd, ".witness", "usage.jsonl"))).toBe(false);
+			expect(existsSync(join(cwd, ".hashtrack", "usage.jsonl"))).toBe(false);
 		} finally {
 			rmSync(other, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("renamed storage directory", () => {
+	test("moves a legacy .witness directory on first write", () => {
+		mkdirSync(join(cwd, ".witness"), { recursive: true });
+		writeFileSync(
+			join(cwd, ".witness", "usage.jsonl"),
+			`${JSON.stringify(rec("legacy"))}\n`,
+		);
+
+		const session = new Session({ sessionId: "s1", harness: "pi" });
+
+		expect(session.totalTokens).toBe(1); // history loaded after the move
+		expect(existsSync(join(cwd, ".witness"))).toBe(false);
+		expect(
+			readFileSync(join(cwd, ".hashtrack", "usage.jsonl"), "utf8"),
+		).toContain('"sid":"legacy"');
+	});
+
+	test("readers fall back to .witness before any adapter writes", () => {
+		mkdirSync(join(cwd, ".witness"), { recursive: true });
+		writeFileSync(
+			join(cwd, ".witness", "usage.jsonl"),
+			`${JSON.stringify(rec("legacy"))}\n`,
+		);
+
+		expect(readRepoRecords(cwd).map((r) => r.sid)).toEqual(["legacy"]);
+		expect(existsSync(join(cwd, ".hashtrack"))).toBe(false);
+	});
+
+	test("HASHTRACK_DIR overrides the directory name", async () => {
+		process.env.HASHTRACK_DIR = ".custom";
+		try {
+			const session = new Session({ sessionId: "s1", harness: "pi" });
+			session.startAgent({ dateTimeISOString: "t", model: "m" });
+			session.addTurn({ tools: [], totalUsage: usage(1, 0) });
+			await session.flush();
+			expect(
+				readFileSync(join(cwd, ".custom", "usage.jsonl"), "utf8"),
+			).toContain('"sid":"s1"');
+			expect(existsSync(join(cwd, ".hashtrack"))).toBe(false);
+		} finally {
+			delete process.env.HASHTRACK_DIR;
 		}
 	});
 });

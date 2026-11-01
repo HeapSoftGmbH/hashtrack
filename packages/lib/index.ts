@@ -1,18 +1,18 @@
 /**
- * The witness favicon as a braille cell: the solid left side with the stepped,
+ * The hashtrack favicon as a braille cell: the solid left side with the stepped,
  * dashed right edge. Terminal status lines cannot show the SVG; Desktop UIs
  * draw the favicon itself.
  */
-export const witnessMark = "⣏";
+export const hashtrackMark = "⣏";
 
 /** The favicon orange, for the mark in UIs that can color it. */
-export const witnessColor = "#bb4d00";
+export const hashtrackColor = "#bb4d00";
 
-/** The same orange as {@link witnessColor}, for APIs that take RGB channels (e.g. pi-tui). */
-export const witnessColorRgb = {
-	r: Number.parseInt(witnessColor.slice(1, 3), 16),
-	g: Number.parseInt(witnessColor.slice(3, 5), 16),
-	b: Number.parseInt(witnessColor.slice(5, 7), 16),
+/** The same orange as {@link hashtrackColor}, for APIs that take RGB channels (e.g. pi-tui). */
+export const hashtrackColorRgb = {
+	r: Number.parseInt(hashtrackColor.slice(1, 3), 16),
+	g: Number.parseInt(hashtrackColor.slice(3, 5), 16),
+	b: Number.parseInt(hashtrackColor.slice(5, 7), 16),
 } as const;
 
 /**

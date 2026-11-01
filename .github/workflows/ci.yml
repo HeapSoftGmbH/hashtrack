@@ -71,7 +71,7 @@ jobs:
       - name: install
         run: bun install --frozen-lockfile
 
-      # <app>-v<version> selects apps/<app>: witness-pi and witness-opencode share this job
+      # <app>-v<version> selects apps/<app>: @hashtrack/pi and @hashtrack/opencode share this job
       - name: resolve tag
         run: |
           APP="${GITHUB_REF_NAME%-v*}"
@@ -79,6 +79,7 @@ jobs:
           test -d "apps/$APP" || { echo "apps/$APP not found"; exit 1; }
           echo "app=$APP" >> "$GITHUB_ENV"
           echo "version=$VERSION" >> "$GITHUB_ENV"
+          echo "pkg=$(jq -r .name "apps/$APP/package.json")" >> "$GITHUB_ENV"
 
       - name: build release notes
         id: changelog
@@ -88,7 +89,7 @@ jobs:
           configurationJson: |
             {
               "template":
-                "## ${{ env.app }} v${{ env.version }}\n\n#{{UNCATEGORIZED}}",
+                "## ${{ env.pkg }} v${{ env.version }}\n\n#{{UNCATEGORIZED}}",
               "commit_template": "- #{{TITLE}}",
               "categories": [],
               "tag_resolver": {
@@ -109,9 +110,10 @@ jobs:
       - name: create github release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64
         with:
-          name: "${{ env.app }} v${{ env.version }}"
+          name: "${{ env.pkg }} v${{ env.version }}"
           body: ${{ steps.changelog.outputs.changelog }}
 
+      # scoped packages publish as private unless access is set explicitly
       - name: publish
         working-directory: apps/${{ env.app }}
-        run: npm publish
+        run: npm publish --access public

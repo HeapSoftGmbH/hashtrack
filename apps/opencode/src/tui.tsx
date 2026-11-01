@@ -1,17 +1,18 @@
 /** @jsxImportSource @opentui/solid */
+
+import { hashtrackColor, hashtrackMark } from "@hashtrack/lib";
 import { Plugin } from "@opencode/plugin/tui";
-import { witnessColor, witnessMark } from "lib";
-import { witnessText } from "./format";
-import { type StatsResult, Witness } from "./rpc";
+import { hashtrackText } from "./format";
+import { Hashtrack, type StatsResult } from "./rpc";
 import { openInBrowser } from "./web";
 
 const REFRESH_MS = 10_000;
 
 // OpenTUI's span renders a text node that takes `fg`, but its props type omits it
-const brandColor = { fg: witnessColor };
+const brandColor = { fg: hashtrackColor };
 
 export default Plugin.define({
-	id: "witness.tui",
+	id: "hashtrack.tui",
 	async setup(context) {
 		const directory = context.location?.directory;
 		const [stats, updateStats] = context.storage.memory("repo", {
@@ -21,7 +22,7 @@ export default Plugin.define({
 		const refresh = async () => {
 			try {
 				const result = (await context.client
-					.rpc(Witness)
+					.rpc(Hashtrack)
 					.stats(directory ? { directory } : {})) as StatsResult;
 				updateStats((draft) => {
 					draft.tokens = result.tokens;
@@ -47,8 +48,8 @@ export default Plugin.define({
 				append: "prompt.footer.status",
 				render: () => (
 					<text fg={context.theme.text.base}>
-						<span {...brandColor}>{witnessMark}</span>{" "}
-						{witnessText(stats.tokens, stats.cost)}
+						<span {...brandColor}>{hashtrackMark}</span>{" "}
+						{hashtrackText(stats.tokens, stats.cost)}
 					</text>
 				),
 			}),
@@ -56,8 +57,8 @@ export default Plugin.define({
 				append: "home.footer.status",
 				render: () => (
 					<text fg={context.theme.text.base}>
-						<span {...brandColor}>{witnessMark}</span>{" "}
-						{witnessText(stats.tokens, stats.cost)}
+						<span {...brandColor}>{hashtrackMark}</span>{" "}
+						{hashtrackText(stats.tokens, stats.cost)}
 					</text>
 				),
 			}),
@@ -68,26 +69,26 @@ export default Plugin.define({
 			priority: 10,
 			commands: [
 				{
-					id: "witness.dashboard",
-					title: "Witness: open dashboard",
+					id: "hashtrack.dashboard",
+					title: "Hashtrack: open dashboard",
 					description: "Show detailed token and cost stats for this repository",
-					group: "Witness",
+					group: "Hashtrack",
 					palette: true,
-					slash: { name: "witness" },
+					slash: { name: "hashtrack" },
 					run: async () => {
 						try {
 							const result = (await context.client
-								.rpc(Witness)
+								.rpc(Hashtrack)
 								.web(directory ? { directory } : {})) as { url: string };
 							openInBrowser(result.url);
 							context.ui.toast.show({
-								title: "Witness",
+								title: "Hashtrack",
 								message: result.url,
 								variant: "success",
 							});
 						} catch (error) {
 							context.ui.toast.show({
-								title: "Witness",
+								title: "Hashtrack",
 								message: `Could not open the dashboard: ${String(error)}`,
 								variant: "error",
 							});

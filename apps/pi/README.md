@@ -1,10 +1,10 @@
-# witness-pi
+# @hashtrack/pi
 
 Persistent agent Analytics. Cost & usage tracking for your pi agent. Including models, provider, tokens, cost, skills, tools.
 
-witness-pi is an extension that records the tokens and dollars spent in every pi session and keeps a running total for each repository. You can check your spend at any time, see which models, tools and skills use the most, and find the sessions that cost the most.
+`@hashtrack/pi` is an extension that records the tokens and dollars spent in every pi session and keeps a running total for each repository. You can check your spend at any time, see which models, tools and skills use the most, and find the sessions that cost the most.
 
-[![npm version](https://img.shields.io/npm/v/witness-pi?label=npm)](https://www.npmjs.com/package/witness-pi) [![source](https://img.shields.io/badge/source-GitHub-blue)](https://github.com/HeapSoftGmbH/witness)
+[![npm version](https://img.shields.io/npm/v/@hashtrack/pi?label=npm)](https://www.npmjs.com/package/@hashtrack/pi) [![source](https://img.shields.io/badge/source-GitHub-blue)](https://github.com/HeapSoftGmbH/hashtrack)
 
 ## Why use it
 
@@ -28,7 +28,7 @@ Shows the total dollars and tokens for the current repository across all session
 Run this inside pi:
 
 ```text
-/witness-pi:show
+/hashtrack:show
 ```
 
 This opens a local dashboard at `http://localhost:4444`. On macOS it opens in your browser automatically; on other systems pi shows the link. The dashboard shows:
@@ -41,7 +41,7 @@ This opens a local dashboard at `http://localhost:4444`. On macOS it opens in yo
 
 ### Detailed tracking
 
-For every agent turn, witness-pi records:
+For every agent turn, hashtrack records:
 
 - input, output, cache-read, cache-write and reasoning tokens
 - cost in dollars
@@ -52,19 +52,19 @@ For every agent turn, witness-pi records:
 ## Install
 
 ```bash
-pi install npm:witness-pi
+pi install npm:@hashtrack/pi
 ```
 
 To try it for one session without installing:
 
 ```bash
-pi -e npm:witness-pi
+pi -e npm:@hashtrack/pi
 ```
 
 Or install the same extension from source:
 
 ```bash
-pi install git:github.com/HeapSoftGmbH/witness
+pi install git:github.com/HeapSoftGmbH/hashtrack
 ```
 
 > [!IMPORTANT]
@@ -74,5 +74,5 @@ pi install git:github.com/HeapSoftGmbH/witness
 
 1. Work in pi as usual. Usage is recorded automatically.
 2. Check the status bar for the running total.
-3. Run `/witness-pi:show` to open the dashboard.
-4. Add `/.witness` to your `.gitignore`, unless you want to commit the usage log so your team can share it.
+3. Run `/hashtrack:show` to open the dashboard.
+4. Add `/.hashtrack` to your `.gitignore`, unless you want to commit the usage log so your team can share it.

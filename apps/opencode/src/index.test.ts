@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentTurnRecord } from "witness";
+import type { AgentTurnRecord } from "@hashtrack/core";
 import plugin from "./index";
 
 interface FakeEvent {
@@ -82,7 +82,7 @@ const model = (over: Record<string, unknown> = {}) => ({
 const record = (dir: string, file = "usage.jsonl"): AgentTurnRecord[] => {
 	let raw: string;
 	try {
-		raw = readFileSync(join(dir, ".witness", file), "utf8").trim();
+		raw = readFileSync(join(dir, ".hashtrack", file), "utf8").trim();
 	} catch {
 		return [];
 	}
@@ -129,8 +129,8 @@ const emit = async (
 };
 
 beforeEach(() => {
-	cwd = mkdtempSync(join(tmpdir(), "witness-opencode-cwd-"));
-	// keep the developer's real ~/.config/opencode/witness/config.json out of the tests:
+	cwd = mkdtempSync(join(tmpdir(), "hashtrack-opencode-cwd-"));
+	// keep the developer's real ~/.config/opencode/hashtrack/config.json out of the tests:
 	// with it in place every flush would upload fixture records to the production endpoint
 	prevXdg = process.env.XDG_CONFIG_HOME;
 	process.env.XDG_CONFIG_HOME = join(cwd, "xdg");
@@ -144,7 +144,7 @@ afterEach(async () => {
 	rmSync(cwd, { recursive: true, force: true });
 });
 
-describe("witness-opencode adapter", () => {
+describe("opencode adapter", () => {
 	test("full lifecycle: session, skills, tools, turn, idle flush", async () => {
 		await start();
 
@@ -464,7 +464,7 @@ describe("witness-opencode adapter", () => {
 	});
 
 	test("ignores sessions from another location", async () => {
-		const other = mkdtempSync(join(tmpdir(), "witness-opencode-other-"));
+		const other = mkdtempSync(join(tmpdir(), "hashtrack-opencode-other-"));
 		try {
 			await start();
 
@@ -506,14 +506,14 @@ describe("witness-opencode adapter", () => {
 			);
 
 			expect(record(cwd)).toHaveLength(0);
-			expect(existsSync(join(other, ".witness"))).toBe(false);
+			expect(existsSync(join(other, ".hashtrack"))).toBe(false);
 		} finally {
 			rmSync(other, { recursive: true, force: true });
 		}
 	});
 
 	test("flushes and stops recording when a session moves to another location", async () => {
-		const other = mkdtempSync(join(tmpdir(), "witness-opencode-other-"));
+		const other = mkdtempSync(join(tmpdir(), "hashtrack-opencode-other-"));
 		try {
 			await start();
 
@@ -569,14 +569,14 @@ describe("witness-opencode adapter", () => {
 			const recs = record(cwd);
 			expect(recs).toHaveLength(1);
 			expect(recs[0]?.turns).toHaveLength(1);
-			expect(existsSync(join(other, ".witness"))).toBe(false);
+			expect(existsSync(join(other, ".hashtrack"))).toBe(false);
 		} finally {
 			rmSync(other, { recursive: true, force: true });
 		}
 	});
 
 	test("cloud config under XDG_CONFIG_HOME uploads to the default API base", async () => {
-		const dir = join(cwd, "xdg", "opencode", "witness");
+		const dir = join(cwd, "xdg", "opencode", "hashtrack");
 		mkdirSync(dir, { recursive: true });
 		writeFileSync(join(dir, "config.json"), JSON.stringify({ token: "tok" }));
 
@@ -615,7 +615,7 @@ describe("witness-opencode adapter", () => {
 	});
 
 	test("records land in the plugin's location, not process.cwd()", async () => {
-		const other = mkdtempSync(join(tmpdir(), "witness-opencode-other-"));
+		const other = mkdtempSync(join(tmpdir(), "hashtrack-opencode-other-"));
 		try {
 			await start(other);
 			await emit("session.step.ended", {
@@ -628,7 +628,7 @@ describe("witness-opencode adapter", () => {
 			await emit("session.idle", { sessionID: "ses-1" });
 
 			const written = readFileSync(
-				join(other, ".witness", "usage.jsonl"),
+				join(other, ".hashtrack", "usage.jsonl"),
 				"utf8",
 			);
 			expect(written).toContain('"sid":"ses-1"');

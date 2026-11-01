@@ -1,11 +1,6 @@
 {
 	"$schema": "https://biome.sh/schemas/2.5.14/schema.json",
 	"files": {
-		"includes": [
-			"**",
-			"!**/dist",
-			"!apps/witness-opencode/web",
-			"!packages/local-web"
-		]
+		"includes": ["**", "!**/dist", "!apps/opencode/web", "!packages/local-web"]
 	}
 }

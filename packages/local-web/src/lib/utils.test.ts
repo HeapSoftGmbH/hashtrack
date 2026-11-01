@@ -31,11 +31,11 @@ describe('getModelFromSourceString', () => {
 
 describe('getRepoName', () => {
 	test('extracts owner/repo from https remote', () => {
-		expect(getRepoName('https://github.com/HeapSoftGmbH/witness.git')).toBe('HeapSoftGmbH/witness');
+		expect(getRepoName('https://github.com/HeapSoftGmbH/hashtrack.git')).toBe('HeapSoftGmbH/hashtrack');
 	});
 
 	test('extracts owner/repo from ssh remote', () => {
-		expect(getRepoName('git@github.com:HeapSoftGmbH/witness.git')).toBe('HeapSoftGmbH/witness');
+		expect(getRepoName('git@github.com:HeapSoftGmbH/hashtrack.git')).toBe('HeapSoftGmbH/hashtrack');
 	});
 
 	test('returns placeholder when there is no remote', () => {
@@ -46,14 +46,14 @@ describe('getRepoName', () => {
 
 describe('getRepoUrl', () => {
 	test('normalizes an https remote to a web URL', () => {
-		expect(getRepoUrl('https://github.com/HeapSoftGmbH/witness.git')).toBe(
-			'https://github.com/HeapSoftGmbH/witness'
+		expect(getRepoUrl('https://github.com/HeapSoftGmbH/hashtrack.git')).toBe(
+			'https://github.com/HeapSoftGmbH/hashtrack'
 		);
 	});
 
 	test('normalizes an ssh remote to a web URL', () => {
-		expect(getRepoUrl('git@github.com:HeapSoftGmbH/witness.git')).toBe(
-			'https://github.com/HeapSoftGmbH/witness'
+		expect(getRepoUrl('git@github.com:HeapSoftGmbH/hashtrack.git')).toBe(
+			'https://github.com/HeapSoftGmbH/hashtrack'
 		);
 	});
 

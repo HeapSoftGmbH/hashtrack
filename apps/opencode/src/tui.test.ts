@@ -112,7 +112,7 @@ afterEach(() => {
 	Bun.spawn = originalSpawn;
 });
 
-describe("witness TUI part", () => {
+describe("hashtrack TUI part", () => {
 	test("contributes the repo total to both footer slots", async () => {
 		await start();
 
@@ -124,10 +124,10 @@ describe("witness TUI part", () => {
 		expect(statsCalls).toEqual([{ directory: "/repo" }]);
 	});
 
-	test("registers a /witness command that opens the dashboard", async () => {
+	test("registers a /hashtrack command that opens the dashboard", async () => {
 		await start();
 
-		const command = commands.find((entry) => entry.slash?.name === "witness");
+		const command = commands.find((entry) => entry.slash?.name === "hashtrack");
 		expect(command).toBeDefined();
 		expect(command?.palette).toBe(true);
 

@@ -1,12 +1,13 @@
 import { execSync } from "node:child_process";
 import {
 	appendFileSync,
+	existsSync,
 	mkdirSync,
 	readFileSync,
 	renameSync,
 	writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 export interface Usage {
 	in: number; // Input Token
@@ -67,6 +68,14 @@ export function repoRoot(cwd?: string): string {
 	return git(cwd, "git rev-parse --show-toplevel") || cwd || process.cwd();
 }
 
+/**
+ * Repository identity, exactly as stored in `AgentTurnRecord.rep`:
+ * the git remote URL, else the git root (or the working directory).
+ */
+export function repoIdentity(cwd?: string): string {
+	return git(cwd, "git config --get remote.origin.url") || repoRoot(cwd);
+}
+
 function rawLines(path: string): string[] {
 	try {
 		return readFileSync(path, "utf8").split("\n");
@@ -76,20 +85,61 @@ function rawLines(path: string): string[] {
 }
 
 /**
- * Read every record in `<git-root>/.witness`, pending first and synced second.
- * Malformed lines are skipped, so old or partially written records never break a reader.
- * Read-only: unlike the Session constructor, this never creates the `.witness` directory.
+ * Directory that holds the log for one repository root:
+ * `<root>/.hashtrack`, or `HASHTRACK_DIR` when set (relative names and
+ * absolute paths both work).
  */
-export function readRepoRecords(cwd?: string): AgentTurnRecord[] {
-	return readWitnessRecords(repoRoot(cwd));
+function dataDir(root: string): string {
+	const override = process.env.HASHTRACK_DIR;
+	return override ? resolve(root, override) : join(root, ".hashtrack");
 }
 
 /**
- * Read every record in `<root>/.witness` for a directory that is already a repository
+ * Directory a reader should use: the current one, or the pre-rename `.witness`
+ * directory while the current one does not exist yet, so history written by
+ * older adapters keeps showing up.
+ */
+function recordsDir(root: string): string {
+	if (process.env.HASHTRACK_DIR) return dataDir(root);
+	const current = join(root, ".hashtrack");
+	if (existsSync(current)) return current;
+	const legacy = join(root, ".witness");
+	return existsSync(legacy) ? legacy : current;
+}
+
+/**
+ * Move a pre-rename `.witness` directory to `.hashtrack` before the first
+ * write, so an upgrade does not split one repo's history across two
+ * directories. Skipped for a custom HASHTRACK_DIR and when `.hashtrack`
+ * already exists.
+ */
+function migrateLegacyDir(root: string, target: string): void {
+	if (process.env.HASHTRACK_DIR) return;
+	const legacy = join(root, ".witness");
+	if (existsSync(target) || !existsSync(legacy)) return;
+	try {
+		renameSync(legacy, target);
+	} catch {
+		// leave it: readers still fall back to the legacy directory
+	}
+}
+
+/**
+ * Read every record in `<git-root>/.hashtrack`, pending first and synced second.
+ * Malformed lines are skipped, so old or partially written records never break a reader.
+ * Read-only: unlike the Session constructor, this never creates the directory, and it
+ * falls back to the pre-rename `.witness` directory when that is all a repo has.
+ */
+export function readRepoRecords(cwd?: string): AgentTurnRecord[] {
+	return readHashtrackRecords(repoRoot(cwd));
+}
+
+/**
+ * Read every record in `<root>/.hashtrack` for a directory that is already a repository
  * root, so readers that resolved the root themselves do not run git twice.
  */
-export function readWitnessRecords(root: string): AgentTurnRecord[] {
-	const path = join(root, ".witness");
+export function readHashtrackRecords(root: string): AgentTurnRecord[] {
+	const path = recordsDir(root);
 	const records: AgentTurnRecord[] = [];
 	for (const line of [
 		...rawLines(join(path, "usage.jsonl")),
@@ -103,6 +153,81 @@ export function readWitnessRecords(root: string): AgentTurnRecord[] {
 		}
 	}
 	return records;
+}
+
+export interface RecordsResult {
+	records: AgentTurnRecord[];
+	source: "cloud" | "local";
+}
+
+export interface CloudRecordsQuery {
+	rep: string; // repository identity, as stored in AgentTurnRecord.rep
+	since?: string; // ISO timestamp; inclusive lower bound
+	until?: string; // ISO timestamp; inclusive upper bound
+}
+
+/**
+ * Pull one repository's records from the hashtrack cloud API.
+ *
+ * Returns `undefined` when cloud sync is not configured or the request fails,
+ * so callers can fall back to the local log. An empty array is a valid answer:
+ * the token works, the repository simply has no records on the server.
+ */
+export async function readCloudRecords(
+	cloud: CloudConfig | undefined,
+	{ rep, since, until }: CloudRecordsQuery,
+): Promise<AgentTurnRecord[] | undefined> {
+	const { token, url } = cloud ?? {};
+	if (!token || !url || !rep) return undefined;
+
+	const params = new URLSearchParams({ rep });
+	if (since) params.set("since", since);
+	if (until) params.set("until", until);
+
+	try {
+		const response = await fetch(
+			`${url.replace(/\/$/, "")}/api/records?${params}`,
+			{
+				headers: { authorization: `Bearer ${token}` },
+				signal: AbortSignal.timeout(4_000),
+			},
+		);
+		if (!response.ok) return undefined;
+
+		const body = (await response.json()) as { records?: unknown };
+		return Array.isArray(body?.records)
+			? (body.records as AgentTurnRecord[])
+			: undefined;
+	} catch {
+		// best-effort: a reader without a connection still shows the local log
+		return undefined;
+	}
+}
+
+/**
+ * Records for a repository, preferring the cloud when a token is configured.
+ * Falls back to `.hashtrack` when the cloud is not configured or unreachable.
+ */
+export async function resolveRepoRecords({
+	cwd,
+	cloud,
+	since,
+	until,
+}: {
+	cwd?: string;
+	cloud?: CloudConfig;
+	since?: string;
+	until?: string;
+} = {}): Promise<RecordsResult> {
+	if (!cloud?.token) return { records: readRepoRecords(cwd), source: "local" };
+
+	const remote = await readCloudRecords(cloud, {
+		rep: repoIdentity(cwd),
+		since,
+		until,
+	});
+	if (remote) return { records: remote, source: "cloud" };
+	return { records: readRepoRecords(cwd), source: "local" };
 }
 
 export class Session {
@@ -148,11 +273,12 @@ export class Session {
 		this.cwd = cwd;
 
 		const root = this.gitRoot();
-		this.rep = this.gitRemote() ?? root;
+		this.rep = repoIdentity(this.cwd);
 		this.branch = this.gitBranch();
 		this.user = this.gitUser();
 
-		this.path = join(root, ".witness");
+		this.path = dataDir(root);
+		migrateLegacyDir(root, this.path);
 		this.fileName = "usage.jsonl";
 		this.syncedFileName = "synced.jsonl";
 		mkdirSync(this.path, { recursive: true });
@@ -165,10 +291,6 @@ export class Session {
 
 	private gitRoot(): string {
 		return repoRoot(this.cwd);
-	}
-
-	private gitRemote(): string | undefined {
-		return this.git("git config --get remote.origin.url") || undefined;
 	}
 
 	private gitBranch(): string {

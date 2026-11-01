@@ -2,17 +2,17 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentTurnRecord } from "witness";
+import type { AgentTurnRecord } from "@hashtrack/core";
 import { repoStats } from "./stats";
 
 const dirs: string[] = [];
 
 const repo = (files: Record<string, string[]> = {}): string => {
-	const dir = mkdtempSync(join(tmpdir(), "witness-stats-"));
+	const dir = mkdtempSync(join(tmpdir(), "hashtrack-stats-"));
 	dirs.push(dir);
-	mkdirSync(join(dir, ".witness"), { recursive: true });
+	mkdirSync(join(dir, ".hashtrack"), { recursive: true });
 	for (const [name, lines] of Object.entries(files)) {
-		writeFileSync(join(dir, ".witness", name), lines.join("\n"));
+		writeFileSync(join(dir, ".hashtrack", name), lines.join("\n"));
 	}
 	return dir;
 };
@@ -68,7 +68,7 @@ describe("repoStats", () => {
 		expect(repoStats(dir)).toBe(first);
 
 		writeFileSync(
-			join(dir, ".witness", "usage.jsonl"),
+			join(dir, ".hashtrack", "usage.jsonl"),
 			`${record("ses-1", [{ tok: 12_345, cst: 0.02 }])}\n`,
 		);
 		expect(repoStats(dir).tokens).toBe(12_345);

@@ -1,18 +1,26 @@
 import { existsSync } from "node:fs";
 import { join, sep } from "node:path";
+import { type CloudConfig, resolveRepoRecords } from "@hashtrack/core";
 import type { Server } from "bun";
-import { readRepoRecords } from "witness";
 
 const PORT = 4447;
 
 /** Only a loopback page may reach the viewer; anything else is a DNS-rebinding attempt. */
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost"]);
 
+export interface ViewerOptions {
+	/** Dashboard build to serve; tests and bundles can resolve it themselves. */
+	webDir?: string;
+	/** Cloud config from the adapter; when set, records come from the server. */
+	cloud?: CloudConfig;
+}
+
 interface Viewer {
 	server: Server<undefined>;
 	url: string;
 	directory: string;
 	webDir: string;
+	cloud?: CloudConfig;
 }
 
 let viewer: Viewer | undefined;
@@ -29,7 +37,7 @@ export function findWebDir(here = import.meta.dir): string | undefined {
 }
 
 function handler(webDir: string) {
-	return (request: Request): Response => {
+	return async (request: Request): Promise<Response> => {
 		const url = new URL(request.url);
 		if (!LOOPBACK_HOSTS.has(url.hostname)) {
 			return new Response("forbidden", { status: 403 });
@@ -38,7 +46,13 @@ function handler(webDir: string) {
 		if (url.pathname === "/api/records") {
 			const directory = url.searchParams.get("dir") ?? viewer?.directory;
 			try {
-				return Response.json(readRepoRecords(directory ?? undefined));
+				const { records, source } = await resolveRepoRecords({
+					cwd: directory ?? undefined,
+					cloud: viewer?.cloud,
+				});
+				return Response.json(records, {
+					headers: { "x-hashtrack-source": source },
+				});
 			} catch {
 				return Response.json([]);
 			}
@@ -63,18 +77,24 @@ function handler(webDir: string) {
 /**
  * Serve the dashboard for a repository, starting the viewer on first use.
  * One local server is shared by every repository; `/api/records?dir=` picks the repo.
- * `webDir` is for tests and bundles that resolve the build themselves.
+ * `options.webDir` is for tests and bundles that resolve the build themselves;
+ * `options.cloud` makes `/api/records` read from the hashtrack server.
  */
-export function ensureViewer(directory: string, webDir?: string): Viewer {
+export function ensureViewer(
+	directory: string,
+	options: ViewerOptions = {},
+): Viewer {
+	const cloud = options.cloud;
 	if (viewer) {
 		viewer.directory = directory;
+		viewer.cloud = cloud ?? viewer.cloud;
 		return viewer;
 	}
 
-	const resolvedWebDir = webDir ?? findWebDir();
+	const resolvedWebDir = options.webDir ?? findWebDir();
 	if (!resolvedWebDir) {
 		throw new Error(
-			"witness: dashboard build not found (run `bun run build:web` in apps/witness-opencode)",
+			"hashtrack: dashboard build not found (run `bun run build:web` in apps/opencode)",
 		);
 	}
 
@@ -99,12 +119,16 @@ export function ensureViewer(directory: string, webDir?: string): Viewer {
 		url: server.url.origin,
 		directory,
 		webDir: resolvedWebDir,
+		cloud,
 	};
 	return viewer;
 }
 
-export function viewerUrl(directory: string, webDir?: string): string {
-	const { url } = ensureViewer(directory, webDir);
+export function viewerUrl(
+	directory: string,
+	options: ViewerOptions = {},
+): string {
+	const { url } = ensureViewer(directory, options);
 	return `${url}/?dir=${encodeURIComponent(directory)}`;
 }
 

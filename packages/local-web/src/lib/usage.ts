@@ -1,4 +1,4 @@
-import type { AgentTurnRecord } from 'witness';
+import type { AgentTurnRecord } from '@hashtrack/core';
 
 export const totalToolCount = (r: AgentTurnRecord) =>
 	new Set(r.turns.flatMap((t) => t.tools.map((tool) => tool.name))).size;

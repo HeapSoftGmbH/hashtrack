@@ -3,7 +3,7 @@
 		compactNumberFormatter,
 		dollarNumberFormatter,
 		dollarNumberFormatterWith4Fracts
-	} from 'lib';
+	} from '@hashtrack/lib';
 
 	import DateRangePicker from '$lib/components/DateRangePicker.svelte';
 	import * as Card from '$lib/components/ui/card/index.js';

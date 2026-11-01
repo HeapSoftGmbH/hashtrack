@@ -1,19 +1,27 @@
-import { chmodSync, readFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import {
+	type CloudConfig,
+	Session,
+	type Tool,
+	type Usage,
+} from "@hashtrack/core";
 import { Plugin } from "@opencode/plugin";
-import { type CloudConfig, Session, type Tool, type Usage } from "witness";
-import { Witness } from "./rpc";
+import { Hashtrack } from "./rpc";
 import { repoStats } from "./stats";
 import { closeViewer, viewerUrl } from "./web";
 
 function readCloudConfig(): CloudConfig | undefined {
-	const file = join(
+	const configRoot = join(
 		process.env.XDG_CONFIG_HOME || join(homedir(), ".config"),
 		"opencode",
-		"witness",
-		"config.json",
 	);
+	// `witness` is the pre-rename config directory, kept as a fallback
+	const file = ["hashtrack", "witness"]
+		.map((dir) => join(configRoot, dir, "config.json"))
+		.find((candidate) => existsSync(candidate));
+	if (!file) return undefined;
 
 	let cfg: { token?: unknown; url?: unknown };
 	try {
@@ -75,13 +83,15 @@ interface Run {
 }
 
 export default Plugin.define({
-	id: "witness",
+	id: "hashtrack",
 	async setup(ctx) {
-		await ctx.rpc.register(Witness, {
+		await ctx.rpc.register(Hashtrack, {
 			stats: async (input) =>
 				repoStats(scopeDirectory(input) ?? ctx.location.directory),
 			web: async (input) => ({
-				url: viewerUrl(scopeDirectory(input) ?? ctx.location.directory),
+				url: viewerUrl(scopeDirectory(input) ?? ctx.location.directory, {
+					cloud,
+				}),
 			}),
 		});
 
@@ -455,12 +465,12 @@ export default Plugin.define({
 							}
 						}
 					} catch (error) {
-						console.error(`witness: failed to handle ${event.type}`, error);
+						console.error(`hashtrack: failed to handle ${event.type}`, error);
 					}
 				}
 			} catch (error) {
 				if (!controller.signal.aborted)
-					console.error("witness: opencode event stream failed", error);
+					console.error("hashtrack: opencode event stream failed", error);
 			}
 		})();
 

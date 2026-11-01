@@ -30,7 +30,7 @@
 			<div class="flex items-center gap-3">
 				<img src="logo_charcoal.svg" alt="" class="h-6 w-auto dark:hidden" />
 				<img src="logo_offwhite.svg" alt="" class="hidden h-6 w-auto dark:block" />
-				<h1 class="text-2xl font-semibold">Witness</h1>
+				<h1 class="text-2xl font-semibold">Hashtrack</h1>
 			</div>
 			<Tabs.List>
 				<Tabs.Trigger value="dashboard">Dashboard</Tabs.Trigger>

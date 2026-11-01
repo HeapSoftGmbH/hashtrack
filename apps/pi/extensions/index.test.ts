@@ -11,8 +11,8 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { witnessColorRgb, witnessMark } from "lib";
-import type { AgentTurnRecord } from "witness";
+import type { AgentTurnRecord } from "@hashtrack/core";
+import { hashtrackColorRgb, hashtrackMark } from "@hashtrack/lib";
 import main from "./index";
 
 type FakeCtx = {
@@ -63,7 +63,7 @@ function setup(model?: { provider: string; name: string }) {
 }
 
 const record = (file = "usage.jsonl"): AgentTurnRecord[] => {
-	const raw = readFileSync(join(cwd, ".witness", file), "utf8").trim();
+	const raw = readFileSync(join(cwd, ".hashtrack", file), "utf8").trim();
 	return raw
 		? raw.split("\n").map((l) => JSON.parse(l) as AgentTurnRecord)
 		: [];
@@ -74,7 +74,7 @@ let prevCwd: string;
 let prevAgentDir: string | undefined;
 
 beforeEach(() => {
-	cwd = mkdtempSync(join(tmpdir(), "witness-pi-cwd-"));
+	cwd = mkdtempSync(join(tmpdir(), "hashtrack-pi-cwd-"));
 	prevCwd = process.cwd();
 	process.chdir(cwd);
 	cwd = process.cwd();
@@ -89,7 +89,7 @@ afterEach(() => {
 	rmSync(cwd, { recursive: true, force: true });
 });
 
-describe("witness-pi adapter", () => {
+describe("pi adapter", () => {
 	test("full lifecycle: start, rename, turn, settle", async () => {
 		const { status, emit, styles } = setup({
 			provider: "anthropic",
@@ -97,9 +97,9 @@ describe("witness-pi adapter", () => {
 		});
 
 		await emit("session_start", { reason: "user" });
-		expect(status[0]).toBe(`witness:${witnessMark} 0 · $0.00`);
+		expect(status[0]).toBe(`hashtrack:${hashtrackMark} 0 · $0.00`);
 		expect(styles.at(-1)).toEqual({
-			fg: { kind: "rgb", ...witnessColorRgb },
+			fg: { kind: "rgb", ...hashtrackColorRgb },
 		});
 
 		await emit("session_info_changed", { name: "renamed" });
@@ -132,7 +132,7 @@ describe("witness-pi adapter", () => {
 		});
 		await emit("agent_settled");
 
-		expect(status.at(-1)).toBe(`witness:${witnessMark} 165 · $0.12`);
+		expect(status.at(-1)).toBe(`hashtrack:${hashtrackMark} 165 · $0.12`);
 		const recs = record();
 		expect(recs).toHaveLength(1);
 		const rec = recs[0];
@@ -226,15 +226,15 @@ describe("witness-pi adapter", () => {
 		});
 	});
 
-	// Config lives at <pi root>/witness/config.json, i.e. ~/.pi/witness/config.json.
+	// Config lives at <pi root>/hashtrack/config.json, i.e. ~/.pi/hashtrack/config.json.
 	const cloudConfig = (config?: object) => {
-		const root = mkdtempSync(join(tmpdir(), "witness-pi-root-"));
+		const root = mkdtempSync(join(tmpdir(), "hashtrack-pi-root-"));
 		const agentDir = join(root, "agent");
 		mkdirSync(agentDir, { recursive: true });
 		if (config) {
-			mkdirSync(join(root, "witness"), { recursive: true });
+			mkdirSync(join(root, "hashtrack"), { recursive: true });
 			writeFileSync(
-				join(root, "witness", "config.json"),
+				join(root, "hashtrack", "config.json"),
 				JSON.stringify(config),
 			);
 		}
@@ -244,7 +244,7 @@ describe("witness-pi adapter", () => {
 		};
 	};
 
-	test("cloud config from ~/.pi/witness/config.json is uploaded on settle", async () => {
+	test("cloud config from ~/.pi/hashtrack/config.json is uploaded on settle", async () => {
 		const cleanup = cloudConfig({
 			url: "https://api.example.com",
 			token: "t",
@@ -272,7 +272,7 @@ describe("witness-pi adapter", () => {
 		const cleanup = cloudConfig({ token: "t" });
 		const file = join(
 			dirname(process.env.PI_CODING_AGENT_DIR ?? ""),
-			"witness",
+			"hashtrack",
 			"config.json",
 		);
 		chmodSync(file, 0o644); // start world-readable, as a plain create would
@@ -311,9 +311,9 @@ describe("witness-pi adapter", () => {
 			url: "https://api.example.com",
 			token: "t",
 		});
-		mkdirSync(join(cwd, ".witness"), { recursive: true });
+		mkdirSync(join(cwd, ".hashtrack"), { recursive: true });
 		writeFileSync(
-			join(cwd, ".witness", "usage.jsonl"),
+			join(cwd, ".hashtrack", "usage.jsonl"),
 			`${JSON.stringify({ t: "t", sid: "old", sn: "", h: "pi", mod: "m", rep: cwd, turns: [] })}\n`,
 		);
 		const bodies: string[] = [];
@@ -367,12 +367,12 @@ describe("witness-pi adapter", () => {
 		await emit("turn_end", {
 			message: { role: "assistant", usage: { totalTokens: 1500 } },
 		});
-		expect(status.at(-1)).toBe(`witness:${witnessMark} 1.5K · $0.00`);
+		expect(status.at(-1)).toBe(`hashtrack:${hashtrackMark} 1.5K · $0.00`);
 
 		await emit("turn_end", {
 			message: { role: "assistant", usage: { totalTokens: 1500000 } },
 		});
-		expect(status.at(-1)).toBe(`witness:${witnessMark} 1.5M · $0.00`);
+		expect(status.at(-1)).toBe(`hashtrack:${hashtrackMark} 1.5M · $0.00`);
 	});
 
 	describe("skill tracking", () => {

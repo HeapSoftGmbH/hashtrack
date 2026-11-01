@@ -14,7 +14,7 @@ describe('App', () => {
 		mount(App, { target });
 		await new Promise((r) => setTimeout(r, 0));
 		const text = target.textContent ?? '';
-		expect(target.querySelector('h1')?.textContent).toBe('Witness');
+		expect(target.querySelector('h1')?.textContent).toBe('Hashtrack');
 		expect(text).toContain('Dashboard');
 		expect(text).toContain('Sessions');
 		expect(text).toContain('Cost');

@@ -1,13 +1,13 @@
 import path from 'node:path';
 import { defineConfig } from 'vitest/config';
-import { readRepoRecords } from 'witness';
+import { readRepoRecords } from '@hashtrack/core';
 
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import tailwindcss from '@tailwindcss/vite';
 
 function usageApi(): import('vite').Plugin {
 	return {
-		name: 'witness-usage-api',
+		name: 'hashtrack-usage-api',
 		configureServer(server) {
 			server.middlewares.use('/api/records', (req, res) => {
 				try {

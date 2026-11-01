@@ -1,6 +1,6 @@
 import { mount } from 'svelte';
 import { describe, expect, test } from 'vitest';
-import type { AgentTurnRecord } from 'witness';
+import type { AgentTurnRecord } from '@hashtrack/core';
 
 import { records } from '$lib/stores/records.svelte.ts';
 

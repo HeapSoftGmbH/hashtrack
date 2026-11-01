@@ -38,9 +38,9 @@ export interface WebResult {
 	url: string;
 }
 
-/** Methods the witness server part exposes to the TUI, the desktop app, and any client. */
-export const Witness = Rpc.define({
-	id: "witness",
+/** Methods the hashtrack server part exposes to the TUI, the desktop app, and any client. */
+export const Hashtrack = Rpc.define({
+	id: "hashtrack",
 	methods: {
 		stats: { input: scope, output: statsOutput },
 		web: { input: scope, output: webOutput },

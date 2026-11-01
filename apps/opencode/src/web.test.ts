@@ -2,20 +2,20 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentTurnRecord } from "witness";
+import type { AgentTurnRecord } from "@hashtrack/core";
 import { closeViewer, ensureViewer, findWebDir, viewerUrl } from "./web";
 
 const dirs: string[] = [];
 
 const tempDir = (): string => {
-	const dir = mkdtempSync(join(tmpdir(), "witness-web-"));
+	const dir = mkdtempSync(join(tmpdir(), "hashtrack-web-"));
 	dirs.push(dir);
 	return dir;
 };
 
 const repo = (): string => {
 	const dir = tempDir();
-	mkdirSync(join(dir, ".witness"), { recursive: true });
+	mkdirSync(join(dir, ".hashtrack"), { recursive: true });
 	const record: AgentTurnRecord = {
 		t: "2026-01-01T00:00:00.000Z",
 		sid: "ses-1",
@@ -39,7 +39,7 @@ const repo = (): string => {
 			},
 		],
 	};
-	writeFileSync(join(dir, ".witness", "usage.jsonl"), JSON.stringify(record));
+	writeFileSync(join(dir, ".hashtrack", "usage.jsonl"), JSON.stringify(record));
 	return dir;
 };
 
@@ -82,7 +82,7 @@ describe("findWebDir", () => {
 describe("viewer", () => {
 	test("serves records scoped by ?dir=", async () => {
 		const dir = repo();
-		const { url } = ensureViewer(dir, dashboard());
+		const { url } = ensureViewer(dir, { webDir: dashboard() });
 
 		const response = await fetch(
 			`${url}/api/records?dir=${encodeURIComponent(dir)}`,
@@ -94,14 +94,14 @@ describe("viewer", () => {
 	});
 
 	test("serves the dashboard shell", async () => {
-		const { url } = ensureViewer(repo(), dashboard());
+		const { url } = ensureViewer(repo(), { webDir: dashboard() });
 		const response = await fetch(`${url}/`);
 		expect(response.status).toBe(200);
 		expect(await response.text()).toContain("<html");
 	});
 
 	test("accepts a localhost Host", async () => {
-		const { url } = ensureViewer(repo(), dashboard());
+		const { url } = ensureViewer(repo(), { webDir: dashboard() });
 		const response = await fetch(`${url}/`, {
 			headers: { host: `localhost:${new URL(url).port}` },
 		});
@@ -110,7 +110,7 @@ describe("viewer", () => {
 
 	test("rejects a non-loopback Host", async () => {
 		const dir = repo();
-		const { url } = ensureViewer(dir, dashboard());
+		const { url } = ensureViewer(dir, { webDir: dashboard() });
 		// Bun.serve rebuilds request.url from the Host header, so this is a DNS-rebinding request
 		const response = await fetch(
 			`${url}/api/records?dir=${encodeURIComponent(dir)}`,
@@ -121,13 +121,13 @@ describe("viewer", () => {
 	});
 
 	test("malformed percent-encoding is not found", async () => {
-		const { url } = ensureViewer(repo(), dashboard());
+		const { url } = ensureViewer(repo(), { webDir: dashboard() });
 		const response = await fetch(`${url}/%`);
 		expect(response.status).toBe(404);
 	});
 
 	test("rejects directory traversal", async () => {
-		const { url } = ensureViewer(repo(), dashboard());
+		const { url } = ensureViewer(repo(), { webDir: dashboard() });
 		const response = await fetch(`${url}/%2e%2e/package.json`);
 		expect(response.status).toBe(404);
 	});
@@ -135,8 +135,79 @@ describe("viewer", () => {
 	test("viewerUrl points at the repo", () => {
 		const dir = repo();
 		const webDir = dashboard();
-		expect(viewerUrl(dir, webDir)).toBe(
-			`${ensureViewer(dir, webDir).url}/?dir=${encodeURIComponent(dir)}`,
+		expect(viewerUrl(dir, { webDir })).toBe(
+			`${ensureViewer(dir, { webDir }).url}/?dir=${encodeURIComponent(dir)}`,
 		);
+	});
+
+	test("uses cloud records when a token is configured", async () => {
+		const dir = repo();
+		const remote: AgentTurnRecord = {
+			t: "2026-02-01T00:00:00.000Z",
+			sid: "remote",
+			sn: "remote",
+			h: "test",
+			rep: dir,
+			mod: "test/model",
+			turns: [],
+		};
+		const originalFetch = globalThis.fetch;
+		const calls: string[] = [];
+		globalThis.fetch = (async (
+			input: string | URL | Request,
+			init?: RequestInit,
+		) => {
+			const url = String(input);
+			if (url.startsWith("https://api.example.com/")) {
+				calls.push(url);
+				const headers = (init?.headers ?? {}) as Record<string, string>;
+				expect(headers.authorization).toBe("Bearer tok");
+				return Response.json({ records: [remote] });
+			}
+			return originalFetch(input, init);
+		}) as typeof fetch;
+
+		try {
+			const { url } = ensureViewer(dir, {
+				webDir: dashboard(),
+				cloud: { url: "https://api.example.com", token: "tok" },
+			});
+			const response = await fetch(
+				`${url}/api/records?dir=${encodeURIComponent(dir)}`,
+			);
+			expect(response.headers.get("x-hashtrack-source")).toBe("cloud");
+			expect((await response.json()) as AgentTurnRecord[]).toEqual([remote]);
+			expect(calls).toHaveLength(1);
+			expect(calls[0] ?? "").toContain(`rep=${encodeURIComponent(dir)}`);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
+	test("falls back to local records when the cloud request fails", async () => {
+		const dir = repo();
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (async (
+			input: string | URL | Request,
+			init?: RequestInit,
+		) => {
+			if (String(input).startsWith("https://api.example.com/"))
+				return new Response("nope", { status: 500 });
+			return originalFetch(input, init);
+		}) as typeof fetch;
+
+		try {
+			const { url } = ensureViewer(dir, {
+				webDir: dashboard(),
+				cloud: { url: "https://api.example.com", token: "tok" },
+			});
+			const response = await fetch(
+				`${url}/api/records?dir=${encodeURIComponent(dir)}`,
+			);
+			expect(response.headers.get("x-hashtrack-source")).toBe("local");
+			expect((await response.json()) as AgentTurnRecord[]).toHaveLength(1);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
 	});
 });

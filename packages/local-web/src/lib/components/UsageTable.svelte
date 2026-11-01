@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { compactNumberFormatter, dollarNumberFormatterWith4Fracts } from 'lib';
+	import { compactNumberFormatter, dollarNumberFormatterWith4Fracts } from '@hashtrack/lib';
 	import {
 		RiArrowDownLine,
 		RiArrowRightSLine,

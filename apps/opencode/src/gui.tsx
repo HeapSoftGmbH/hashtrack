@@ -2,9 +2,9 @@
 import { Command, Plugin, Slot, type Ui } from "@opencode/plugin/gui";
 import { createResource, Show } from "solid-js";
 import favicon from "../../../packages/local-web/public/favicon.svg?raw";
-import { witnessText } from "./format";
+import { hashtrackText } from "./format";
 import { catalog } from "./i18n";
-import { type StatsResult, Witness } from "./rpc";
+import { Hashtrack, type StatsResult } from "./rpc";
 
 // Desktop can show the real favicon, so the label carries the text only
 const faviconUrl = `data:image/svg+xml,${encodeURIComponent(favicon)}`;
@@ -29,7 +29,7 @@ function Totals(props: {
 	);
 	const label = () => {
 		const value = stats();
-		return value ? witnessText(value.tokens, value.cost) : "";
+		return value ? hashtrackText(value.tokens, value.cost) : "";
 	};
 
 	// the slot keeps this component mounted while the user switches sessions;
@@ -60,17 +60,17 @@ export default Plugin.define({
 	i18n: catalog,
 	setup(ctx) {
 		const load = async (directory: string): Promise<StatsResult> =>
-			(await ctx.client.rpc(Witness).stats({ directory })) as StatsResult;
+			(await ctx.client.rpc(Hashtrack).stats({ directory })) as StatsResult;
 
 		const openDashboard = async (directory?: string): Promise<void> => {
 			try {
 				const { url } = (await ctx.client
-					.rpc(Witness)
+					.rpc(Hashtrack)
 					.web(directory ? { directory } : {})) as { url: string };
 				ctx.system.openExternal(url);
 			} catch (error) {
 				ctx.toast.show({
-					title: "Witness",
+					title: "Hashtrack",
 					description: ctx.t("openFailed", { error: String(error) }),
 					variant: "error",
 				});
@@ -81,9 +81,9 @@ export default Plugin.define({
 			id: "dashboard",
 			title: ctx.t("commandTitle"),
 			description: ctx.t("commandDescription"),
-			group: "Witness",
-			keywords: "usage tokens cost witness",
-			slash: { name: "witness" },
+			group: "Hashtrack",
+			keywords: "usage tokens cost hashtrack",
+			slash: { name: "hashtrack" },
 			run: () => openDashboard(ctx.sessions.current()?.directory),
 		}));
 

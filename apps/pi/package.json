@@ -1,18 +1,18 @@
 {
-	"name": "witness-pi",
-	"version": "0.0.23",
+	"name": "@hashtrack/pi",
+	"version": "0.1.0",
 	"type": "module",
 	"module": "./dist/index.js",
 	"files": [
 		"dist"
 	],
 	"keywords": [
-		"witness-pi",
+		"hashtrack",
 		"pi-package"
 	],
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/HeapSoftGmbH/witness"
+		"url": "https://github.com/HeapSoftGmbH/hashtrack"
 	},
 	"scripts": {
 		"build": "bun run --cwd ../.. build:web && bun build extensions/index.ts --outdir dist --target=bun --external @earendil-works/pi-coding-agent && rm -rf dist/local-web && cp -r ../../packages/local-web/dist dist/local-web",
@@ -21,8 +21,8 @@
 	"devDependencies": {
 		"@earendil-works/pi-coding-agent": "^1.2.0",
 		"@types/bun": "^1.4.3",
-		"lib": "workspace:*",
-		"witness": "workspace:*"
+		"@hashtrack/lib": "workspace:*",
+		"@hashtrack/core": "workspace:*"
 	},
 	"peerDependencies": {
 		"@earendil-works/pi-coding-agent": "^1.2.0"

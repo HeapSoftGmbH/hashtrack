@@ -10,19 +10,29 @@ import {
 	VERSION,
 } from "@earendil-works/pi-coding-agent";
 import {
+	type CloudConfig,
+	resolveRepoRecords,
+	Session,
+	type Tool,
+	type Usage,
+} from "@hashtrack/core";
+import {
 	compactNumberFormatter,
 	dollarNumberFormatter,
-	witnessColorRgb,
-	witnessMark,
-} from "lib";
-import { type CloudConfig, Session, type Tool, type Usage } from "witness";
+	hashtrackColorRgb,
+	hashtrackMark,
+} from "@hashtrack/lib";
 
 const PORT = 4444;
 
 function readCloudConfig(): CloudConfig | undefined {
 	const agentDir =
 		process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
-	const file = join(dirname(agentDir), "witness", "config.json");
+	// `witness` is the pre-rename config directory, kept as a fallback
+	const file = ["hashtrack", "witness"]
+		.map((dir) => join(dirname(agentDir), dir, "config.json"))
+		.find((candidate) => existsSync(candidate));
+	if (!file) return undefined;
 
 	let cfg: { token?: unknown; url?: unknown };
 	try {
@@ -48,6 +58,7 @@ export default function main(pi: ExtensionAPI) {
 	let ctx: ExtensionContext;
 	let server: Server | undefined;
 	let piVersion: string | undefined;
+	let cloud: CloudConfig | undefined;
 
 	function harnessVersion(): string {
 		if (!piVersion) {
@@ -86,24 +97,25 @@ export default function main(pi: ExtensionAPI) {
 
 	function renderStatus(): void {
 		const { theme } = ctx.ui;
-		const mark = theme.style(witnessMark, {
+		const mark = theme.style(hashtrackMark, {
 			// the favicon orange, as a pi-tui rgb Color
-			fg: { kind: "rgb", ...witnessColorRgb },
+			fg: { kind: "rgb", ...hashtrackColorRgb },
 		});
 		const totals = theme.fg(
 			"dim",
 			`${compactNumberFormatter.format(session.totalTokens)} · ${dollarNumberFormatter.format(session.totalCost)}`,
 		);
-		ctx.ui.setStatus("witness", `${mark} ${totals}`);
+		ctx.ui.setStatus("hashtrack", `${mark} ${totals}`);
 	}
 
 	pi.on("session_start", async (event, c) => {
 		ctx = c;
+		cloud = readCloudConfig();
 		session = new Session({
 			sessionId: ctx.sessionManager.getSessionId(),
 			harness: "pi",
 			harnessVersion: piVersion ?? harnessVersion(),
-			cloud: readCloudConfig(),
+			cloud,
 		});
 		session.addMetadata({ start_reason: event.reason });
 		renderStatus();
@@ -189,7 +201,7 @@ export default function main(pi: ExtensionAPI) {
 		renderStatus();
 	});
 
-	pi.registerCommand("witness-pi:show", {
+	pi.registerCommand("hashtrack:show", {
 		description: "Show detailed usage data for this project",
 		handler: async (_args, c) => {
 			const base = dirname(fileURLToPath(import.meta.url));
@@ -202,7 +214,7 @@ export default function main(pi: ExtensionAPI) {
 
 			if (!dist) {
 				c.ui.notify(
-					`witness: viewer not found (tried: ${candidates.join(", ")})`,
+					`hashtrack: viewer not found (tried: ${candidates.join(", ")})`,
 					"error",
 				);
 				return;
@@ -220,11 +232,20 @@ export default function main(pi: ExtensionAPI) {
 						".ico": "image/x-icon",
 					};
 
-					server = createServer((req, res) => {
+					server = createServer(async (req, res) => {
 						const { pathname } = new URL(req.url ?? "/", "http://localhost");
 						if (pathname === "/api/records") {
-							res.writeHead(200, { "content-type": MIME[".json"] });
-							res.end(JSON.stringify(session?.readRecords() ?? []));
+							try {
+								const { records, source } = await resolveRepoRecords({ cloud });
+								res.writeHead(200, {
+									"content-type": MIME[".json"],
+									"x-hashtrack-source": source,
+								});
+								res.end(JSON.stringify(records));
+							} catch {
+								res.writeHead(500, { "content-type": MIME[".json"] });
+								res.end(JSON.stringify({ error: "records unavailable" }));
+							}
 							return;
 						}
 
@@ -253,7 +274,7 @@ export default function main(pi: ExtensionAPI) {
 						server?.listen(PORT, "127.0.0.1", resolve);
 					});
 				} catch (e) {
-					c.ui.notify(`witness: server failed — ${e}`, "error");
+					c.ui.notify(`hashtrack: server failed — ${e}`, "error");
 					return;
 				}
 			}
@@ -261,7 +282,7 @@ export default function main(pi: ExtensionAPI) {
 			if (process.platform === "darwin") {
 				spawn("open", [`http://localhost:${PORT}`], { stdio: "ignore" });
 			} else {
-				c.ui.notify(`witness: http://localhost:${PORT}`, "info");
+				c.ui.notify(`hashtrack: http://localhost:${PORT}`, "info");
 			}
 		},
 	});

@@ -1,6 +1,10 @@
 import { statSync } from "node:fs";
 import { join } from "node:path";
-import { type AgentTurnRecord, readWitnessRecords, repoRoot } from "witness";
+import {
+	type AgentTurnRecord,
+	readHashtrackRecords,
+	repoRoot,
+} from "@hashtrack/core";
 
 export interface RepoStats {
 	tokens: number;
@@ -53,7 +57,7 @@ function count(records: AgentTurnRecord[]): RepoStats {
 }
 
 /**
- * Totals for one repository, from every record in `.witness`
+ * Totals for one repository, from every record in `.hashtrack`
  * (pending `usage.jsonl` plus archived `synced.jsonl`).
  *
  * The TUI polls this while it is open, so the result is cached per repository
@@ -61,12 +65,12 @@ function count(records: AgentTurnRecord[]): RepoStats {
  */
 export function repoStats(directory?: string): RepoStats {
 	const root = repoRoot(directory);
-	const usage = stamp(join(root, ".witness", "usage.jsonl"));
-	const synced = stamp(join(root, ".witness", "synced.jsonl"));
+	const usage = stamp(join(root, ".hashtrack", "usage.jsonl"));
+	const synced = stamp(join(root, ".hashtrack", "synced.jsonl"));
 	const hit = cache.get(root);
 	if (hit && hit.usage === usage && hit.synced === synced) return hit.stats;
 
-	const stats = count(readWitnessRecords(root));
+	const stats = count(readHashtrackRecords(root));
 	cache.set(root, { usage, synced, stats });
 	return stats;
 }

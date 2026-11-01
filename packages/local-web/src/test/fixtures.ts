@@ -1,4 +1,4 @@
-import type { AgentTurnRecord, Tool, Usage } from 'witness';
+import type { AgentTurnRecord, Tool, Usage } from '@hashtrack/core';
 
 export const usage = (tok = 0, cst = 0): Usage => ({
 	in: 0,

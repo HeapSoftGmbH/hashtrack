@@ -2,8 +2,8 @@
 	import { scaleLinear, scalePoint } from 'd3-scale';
 	import { curveMonotoneX } from 'd3-shape';
 	import { AreaChart, Tooltip, defaultChartPadding } from 'layerchart';
-	import { compactNumberFormatter } from 'lib';
-	import type { AgentTurnRecord } from 'witness';
+	import { compactNumberFormatter } from '@hashtrack/lib';
+	import type { AgentTurnRecord } from '@hashtrack/core';
 
 	import * as Chart from '$lib/components/ui/chart/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton';
