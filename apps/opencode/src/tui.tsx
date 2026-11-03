@@ -3,10 +3,9 @@
 import { hashtrackColor, hashtrackMark } from "@hashtrack/lib";
 import { Plugin } from "@opencode/plugin/tui";
 import { hashtrackText } from "./format";
+import { watchTurns } from "./refresh";
 import { Hashtrack, type StatsResult } from "./rpc";
 import { openInBrowser } from "./web";
-
-const REFRESH_MS = 10_000;
 
 // OpenTUI's span renders a text node that takes `fg`, but its props type omits it
 const brandColor = { fg: hashtrackColor };
@@ -36,12 +35,7 @@ export default Plugin.define({
 
 		await refresh();
 
-		const timer = setInterval(() => void refresh(), REFRESH_MS);
-		const stopIdle = context.data.on("session.idle", () => void refresh());
-		const stopDone = context.data.on(
-			"session.execution.succeeded",
-			() => void refresh(),
-		);
+		const stopTurns = watchTurns(context.data, () => void refresh());
 
 		const slots = [
 			context.ui.slot({
@@ -99,9 +93,7 @@ export default Plugin.define({
 		}));
 
 		return () => {
-			clearInterval(timer);
-			stopIdle();
-			stopDone();
+			stopTurns();
 			for (const dispose of slots) dispose();
 		};
 	},
