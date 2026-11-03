@@ -1,32 +1,51 @@
 /** @jsxImportSource solid-js */
-import { Command, Plugin, Slot, type Ui } from "@opencode/plugin/gui";
-import { createResource, Show } from "solid-js";
+import {
+	Command,
+	type MountedSession,
+	Plugin,
+	Slot,
+	type Ui,
+} from "@opencode/plugin/gui";
+import { createEffect, createResource, onCleanup, Show } from "solid-js";
 import favicon from "../../../packages/local-web/public/favicon.svg?raw";
 import { hashtrackText } from "./format";
 import { catalog } from "./i18n";
+import { watchTurns } from "./refresh";
 import { Hashtrack, type StatsResult } from "./rpc";
 
 // Desktop can show the real favicon, so the label carries the text only
 const faviconUrl = `data:image/svg+xml,${encodeURIComponent(favicon)}`;
 
 function Totals(props: {
-	session: { readonly directory: string };
+	session: MountedSession;
+	active: boolean;
 	load(directory: string): Promise<StatsResult>;
 	open(): void;
 	tooltip: string;
 	ui: Ui;
 }) {
-	const [stats] = createResource(
+	// a failed refresh keeps the last total for the same directory, like the TUI
+	let last: { directory: string; stats: StatsResult } | undefined;
+	const [stats, { refetch }] = createResource(
 		() => props.session.directory || undefined,
 		async (directory) => {
 			try {
-				return await props.load(directory);
+				last = { directory, stats: await props.load(directory) };
 			} catch {
-				// the server part may not be ready yet: keep the badge empty
-				return undefined;
+				// the server part may not be ready yet: keep the badge empty or stale
 			}
+			return last?.directory === directory ? last.stats : undefined;
 		},
 	);
+
+	// mirror the TUI: a finished turn refreshes the repo totals, so the badge
+	// does not lag behind until the session is routed again. Cached timelines
+	// stay mounted while hidden, so only the visible one watches.
+	createEffect(() => {
+		if (!props.active) return;
+		onCleanup(watchTurns(props.session.server.data, () => void refetch()));
+	});
+
 	const label = () => {
 		const value = stats();
 		return value ? hashtrackText(value.tokens, value.cost) : "";
@@ -93,6 +112,7 @@ export default Plugin.define({
 			render: (input) => (
 				<Totals
 					session={input.session}
+					active={input.active}
 					load={load}
 					open={() => void openDashboard(input.session.directory)}
 					tooltip={ctx.t("openDashboard")}
