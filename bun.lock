@@ -14,7 +14,7 @@
     },
     "apps/opencode": {
       "name": "@hashtrack/opencode",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "devDependencies": {
         "@hashtrack/core": "workspace:*",
         "@hashtrack/lib": "workspace:*",
