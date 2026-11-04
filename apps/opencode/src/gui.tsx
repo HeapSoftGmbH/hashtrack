@@ -6,9 +6,10 @@ import {
 	Slot,
 	type Ui,
 } from "@opencode/plugin/gui";
-import { createEffect, createResource, onCleanup, Show } from "solid-js";
+import { createEffect, onCleanup, Show } from "solid-js";
 import favicon from "../../../packages/local-web/public/favicon.svg?raw";
 import { hashtrackText } from "./format";
+import { createStatsState } from "./gui-stats";
 import { catalog } from "./i18n";
 import { watchTurns } from "./refresh";
 import { Hashtrack, type StatsResult } from "./rpc";
@@ -24,36 +25,32 @@ function Totals(props: {
 	tooltip: string;
 	ui: Ui;
 }) {
-	// a failed refresh keeps the last total for the same directory, like the TUI
-	let last: { directory: string; stats: StatsResult } | undefined;
-	const [stats, { refetch }] = createResource(
+	const { stats, refresh } = createStatsState(
+		(directory) => props.load(directory),
 		() => props.session.directory || undefined,
-		async (directory) => {
-			try {
-				last = { directory, stats: await props.load(directory) };
-			} catch {
-				// the server part may not be ready yet: keep the badge empty or stale
-			}
-			return last?.directory === directory ? last.stats : undefined;
-		},
 	);
+
+	createEffect(() => {
+		void refresh(props.session.directory || undefined);
+	});
 
 	// mirror the TUI: a finished turn refreshes the repo totals, so the badge
 	// does not lag behind until the session is routed again. Cached timelines
 	// stay mounted while hidden, so only the visible one watches.
 	createEffect(() => {
 		if (!props.active) return;
-		onCleanup(watchTurns(props.session.server.data, () => void refetch()));
+		onCleanup(
+			watchTurns(
+				props.session.server.data,
+				() => void refresh(props.session.directory || undefined),
+			),
+		);
 	});
 
 	const label = () => {
 		const value = stats();
 		return value ? hashtrackText(value.tokens, value.cost) : "";
 	};
-
-	// the slot keeps this component mounted while the user switches sessions;
-	// createResource keyed on the directory drops responses for a directory
-	// that is no longer the current one
 
 	return (
 		<props.ui.Tooltip value={props.tooltip} placement="bottom">

@@ -53,6 +53,7 @@ bun run lint:fix
 - **Never write tests for `src/lib/components/ui`** — vendored shadcn-svelte, not ours. It's excluded in the vitest config (`test.exclude`).
 - Do not run bare `bun test`: it scans the whole repo and therefore also collects the vitest suites under `packages/local-web`, which fail under bun. `bun run test:extensions` runs `packages/core`, `packages/lib` and both adapters.
 - Tests colocate as `*.test.ts` next to the code. Pure logic = plain vitest; Svelte components = `mount` from `svelte` + jsdom.
+- `apps/opencode/src/gui-stats.test.ts` also runs in a browser-runtime pass (`bun run test:gui`, `--conditions=browser`); its Suspense regression test is skipped in the plain node run, so `test:extensions` runs that file twice on purpose.
 - Component tests that assert chart content after mount must wait a tick — charts draw after the stubbed ResizeObserver reports a size.
 
 ## Conventions
