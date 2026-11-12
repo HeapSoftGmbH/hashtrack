@@ -606,9 +606,7 @@ describe("opencode adapter", () => {
 			globalThis.fetch = original;
 		}
 
-		expect(calls).toEqual([
-			"https://witness-rho-rust.vercel.app/api/ingest|Bearer tok",
-		]);
+		expect(calls).toEqual(["https://hashtrack.ai/api/ingest|Bearer tok"]);
 		// an uploaded record is archived, so usage.jsonl is empty
 		expect(record(cwd)).toHaveLength(0);
 		expect(record(cwd, "synced.jsonl")).toHaveLength(1);

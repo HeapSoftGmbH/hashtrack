@@ -398,9 +398,7 @@ describe("cloud upload", () => {
 		session.startAgent({ dateTimeISOString: "t", model: "m" });
 		session.addTurn({ tools: [], totalUsage: usage(10, 0.1) });
 		await session.flush();
-		expect(calls[0]?.url).toBe(
-			"https://witness-rho-rust.vercel.app/api/ingest",
-		);
+		expect(calls[0]?.url).toBe("https://hashtrack.ai/api/ingest");
 	});
 
 	test("no token: no request, record stays pending", async () => {

@@ -5,7 +5,7 @@ The hashtrack extensions talk to one HTTP API. `POST /api/ingest` uploads record
 API token, so the dashboard shows the server's copy of a repository instead of
 the local `.hashtrack` log whenever a token is configured.
 
-Base URL is `https://witness-rho-rust.vercel.app` unless the adapter config sets
+Base URL is `https://hashtrack.ai` unless the adapter config sets
 `url` (`~/.pi/hashtrack/config.json` or `~/.config/opencode/hashtrack/config.json`).
 
 ## Authentication

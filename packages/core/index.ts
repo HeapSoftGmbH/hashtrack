@@ -577,7 +577,7 @@ export class Session {
 	private readonly branch: string;
 	private readonly user: { name: string; email: string };
 	private readonly cloud?: CloudConfig = {
-		url: "https://witness-rho-rust.vercel.app",
+		url: "https://hashtrack.ai",
 	};
 	private readonly cwd?: string;
 
