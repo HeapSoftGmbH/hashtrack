@@ -1,7 +1,7 @@
 {
 	"name": "hashtrack",
 	"displayName": "Hashtrack",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Token & cost tracking for Claude Code: records each turn to a per-repo usage log and shows the repo total in the prompt footer, with a details pane.",
 	"author": {
 		"name": "FrediLehmann"

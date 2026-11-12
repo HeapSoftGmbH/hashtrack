@@ -14,7 +14,7 @@
     },
     "apps/claude": {
       "name": "@hashtrack/claude",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "devDependencies": {
         "@hashtrack/core": "workspace:*",
         "@hashtrack/lib": "workspace:*",
