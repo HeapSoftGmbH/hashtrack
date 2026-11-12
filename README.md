@@ -179,3 +179,7 @@ Bun workspaces monorepo:
 - `apps/pi` — pi extension (`extensions/index.ts` maps pi events to `Session`)
 - `apps/opencode` — opencode plugin (`src/index.ts` maps opencode events to `Session`)
 - `packages/local-web` — the dashboard UI
+
+## License
+
+[Apache-2.0](LICENSE)
