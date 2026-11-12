@@ -1,10 +1,15 @@
 import { execSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
 	appendFileSync,
+	closeSync,
 	existsSync,
 	mkdirSync,
+	openSync,
 	readFileSync,
+	readSync,
 	renameSync,
+	statSync,
 	writeFileSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
@@ -139,12 +144,33 @@ export function readRepoRecords(cwd?: string): AgentTurnRecord[] {
  * root, so readers that resolved the root themselves do not run git twice.
  */
 export function readHashtrackRecords(root: string): AgentTurnRecord[] {
-	const path = recordsDir(root);
+	const { pending, synced } = recordsFiles(root);
+	return parseRecords([...rawLines(pending), ...rawLines(synced)]);
+}
+
+/** The two log files in a data directory: the pending queue and the archive. */
+interface LogFiles {
+	pending: string;
+	synced: string;
+}
+
+/** The one place the log's file names are spelled out. */
+function logFiles(dir: string): LogFiles {
+	return {
+		pending: join(dir, "usage.jsonl"),
+		synced: join(dir, "synced.jsonl"),
+	};
+}
+
+/** The log files a reader of `<root>` uses, from the directory `recordsDir` picks. */
+function recordsFiles(root: string): LogFiles {
+	return logFiles(recordsDir(root));
+}
+
+/** Parse JSONL lines into records, skipping blank and malformed ones. */
+function parseRecords(lines: Iterable<string>): AgentTurnRecord[] {
 	const records: AgentTurnRecord[] = [];
-	for (const line of [
-		...rawLines(join(path, "usage.jsonl")),
-		...rawLines(join(path, "synced.jsonl")),
-	]) {
+	for (const line of lines) {
 		if (!line.trim()) continue;
 		try {
 			records.push(JSON.parse(line) as AgentTurnRecord);
@@ -153,6 +179,309 @@ export function readHashtrackRecords(root: string): AgentTurnRecord[] {
 		}
 	}
 	return records;
+}
+
+/** Tokens, dollars and turns, summed. */
+export interface TurnTotals {
+	tokens: number;
+	cost: number;
+	turns: number;
+}
+
+/**
+ * Running sums over records, kept whole (no ranking, no cut-off) so that
+ * tallies of separate parts, say two files, merge into the tally of all of
+ * them. Readers derive what they show from it.
+ */
+export interface UsageTally extends TurnTotals {
+	records: number;
+	/** Every session id seen, including records without turns. */
+	sessions: Map<string, TurnTotals>;
+	/** Dollars per model (`mod`); records without one are left out. */
+	models: Map<string, number>;
+	/** Calls and errors per raw tool name. */
+	tools: Map<string, { calls: number; errors: number }>;
+}
+
+export function emptyTotals(): TurnTotals {
+	return { tokens: 0, cost: 0, turns: 0 };
+}
+
+export function emptyTally(): UsageTally {
+	return {
+		records: 0,
+		...emptyTotals(),
+		sessions: new Map(),
+		models: new Map(),
+		tools: new Map(),
+	};
+}
+
+/** Add `records` to `tally` (a new one by default) and return it. */
+export function tallyRecords(
+	records: Iterable<AgentTurnRecord>,
+	tally: UsageTally = emptyTally(),
+): UsageTally {
+	for (const record of records) {
+		tally.records += 1;
+		const session = tally.sessions.get(record.sid) ?? emptyTotals();
+		tally.sessions.set(record.sid, session);
+
+		for (const turn of record.turns ?? []) {
+			const tokens = Number(turn.totalUsage?.tok) || 0;
+			const cost = Number(turn.totalUsage?.cst) || 0;
+			for (const totals of [tally, session]) {
+				totals.tokens += tokens;
+				totals.cost += cost;
+				totals.turns += 1;
+			}
+			if (record.mod) {
+				tally.models.set(
+					record.mod,
+					(tally.models.get(record.mod) ?? 0) + cost,
+				);
+			}
+			for (const tool of turn.tools ?? []) {
+				const entry = tally.tools.get(tool.name) ?? { calls: 0, errors: 0 };
+				entry.calls += 1;
+				if (tool.isError) entry.errors += 1;
+				tally.tools.set(tool.name, entry);
+			}
+		}
+	}
+	return tally;
+}
+
+/** One tally covering every part; the parts are left as they are. */
+export function mergeTallies(...parts: UsageTally[]): UsageTally {
+	const all = emptyTally();
+	for (const part of parts) {
+		all.records += part.records;
+		all.tokens += part.tokens;
+		all.cost += part.cost;
+		all.turns += part.turns;
+		for (const [sid, s] of part.sessions) {
+			const into = all.sessions.get(sid) ?? emptyTotals();
+			all.sessions.set(sid, {
+				tokens: into.tokens + s.tokens,
+				cost: into.cost + s.cost,
+				turns: into.turns + s.turns,
+			});
+		}
+		for (const [mod, cost] of part.models) {
+			all.models.set(mod, (all.models.get(mod) ?? 0) + cost);
+		}
+		for (const [name, t] of part.tools) {
+			const into = all.tools.get(name) ?? { calls: 0, errors: 0 };
+			all.tools.set(name, {
+				calls: into.calls + t.calls,
+				errors: into.errors + t.errors,
+			});
+		}
+	}
+	return all;
+}
+
+/** How far one log file has been read, and the tally of what was read. */
+interface FileTally {
+	ino: string;
+	offset: number;
+	tally: UsageTally;
+}
+
+/** One file brought up to date: its cache entry, plus a last line with no newline yet. */
+interface FileRead {
+	file: FileTally;
+	size: number;
+	tail: AgentTurnRecord[];
+}
+
+/** A tally as stored in a cache file: Maps as entry lists. */
+interface StoredFile {
+	ino: string;
+	offset: number;
+	tally: Omit<UsageTally, "sessions" | "models" | "tools"> & {
+		sessions: Array<[string, TurnTotals]>;
+		models: Array<[string, number]>;
+		tools: Array<[string, { calls: number; errors: number }]>;
+	};
+}
+
+interface RepoTallyCache {
+	pending?: FileTally;
+	synced?: FileTally;
+}
+
+const NEWLINE = 0x0a;
+
+function storeFile({ ino, offset, tally }: FileTally): StoredFile {
+	return {
+		ino,
+		offset,
+		tally: {
+			...tally,
+			sessions: [...tally.sessions],
+			models: [...tally.models],
+			tools: [...tally.tools],
+		},
+	};
+}
+
+function restoreFile(stored: StoredFile | undefined): FileTally | undefined {
+	if (
+		typeof stored?.ino !== "string" ||
+		typeof stored.offset !== "number" ||
+		!Array.isArray(stored.tally?.sessions) ||
+		!Array.isArray(stored.tally.models) ||
+		!Array.isArray(stored.tally.tools)
+	) {
+		return undefined;
+	}
+	return {
+		ino: stored.ino,
+		offset: stored.offset,
+		tally: {
+			...stored.tally,
+			sessions: new Map(stored.tally.sessions),
+			models: new Map(stored.tally.models),
+			tools: new Map(stored.tally.tools),
+		},
+	};
+}
+
+function readBytes(file: string, from: number, length: number): Buffer {
+	const bytes = Buffer.alloc(length);
+	const fd = openSync(file, "r");
+	let read = 0;
+	try {
+		while (read < length) {
+			const n = readSync(fd, bytes, read, length - read, from + read);
+			if (n === 0) break;
+			read += n;
+		}
+	} finally {
+		closeSync(fd);
+	}
+	return bytes.subarray(0, read);
+}
+
+/**
+ * Brings one file's tally up to date. The log is append-only, so while the
+ * file is the same one (inode) and has not shrunk, only the bytes after the
+ * last read are parsed; a rewrite (the upload's tmp + rename) or truncation
+ * starts over. The cached part stops at the last newline, so a line still
+ * being written is picked up whole later; a last line that already parses
+ * (a file that ends without a newline) still counts, in `tail`.
+ */
+function advance(
+	file: string,
+	cached: FileTally | undefined,
+): FileRead | undefined {
+	let ino: string;
+	let size: number;
+	try {
+		const stat = statSync(file, { bigint: true });
+		ino = `${stat.dev}:${stat.ino}`;
+		size = Number(stat.size);
+	} catch {
+		return undefined; // no file, nothing to count
+	}
+
+	const base =
+		cached && cached.ino === ino && cached.offset <= size
+			? cached
+			: { ino, offset: 0, tally: emptyTally() };
+	if (base.offset === size) return { file: base, size, tail: [] };
+
+	const bytes = readBytes(file, base.offset, size - base.offset);
+	const end = bytes.lastIndexOf(NEWLINE) + 1;
+	const tail = parseRecords([bytes.subarray(end).toString("utf8")]);
+	if (end === 0) return { file: base, size, tail };
+	const lines = bytes.subarray(0, end).toString("utf8").split("\n");
+	return {
+		file: {
+			ino,
+			offset: base.offset + end,
+			tally: tallyRecords(parseRecords(lines), base.tally),
+		},
+		size,
+		tail,
+	};
+}
+
+function readTallyCache(cacheFile: string): RepoTallyCache {
+	try {
+		const stored = JSON.parse(readFileSync(cacheFile, "utf8")) ?? {};
+		return {
+			pending: restoreFile(stored.pending),
+			synced: restoreFile(stored.synced),
+		};
+	} catch {
+		return {};
+	}
+}
+
+function writeTallyCache(cacheFile: string, cache: RepoTallyCache): void {
+	try {
+		mkdirSync(join(cacheFile, ".."), { recursive: true });
+		const tmp = `${cacheFile}.${process.pid}.tmp`;
+		writeFileSync(
+			tmp,
+			JSON.stringify({
+				...(cache.pending ? { pending: storeFile(cache.pending) } : {}),
+				...(cache.synced ? { synced: storeFile(cache.synced) } : {}),
+			}),
+		);
+		renameSync(tmp, cacheFile);
+	} catch {
+		// a cache that cannot be written only costs a full read next time
+	}
+}
+
+/** In-process caches, by pending file: the file tallies and the last result. */
+const repoTallies = new Map<
+	string,
+	{ cache: RepoTallyCache; key: string; tally: UsageTally }
+>();
+
+/**
+ * The tally of every record a reader of `<root>` sees (the same records as
+ * `readHashtrackRecords`), for readers that ask often: each log file is
+ * parsed only from where the last call stopped.
+ *
+ * Without `cacheDir` the running tallies live in this process, and while no
+ * file changed the same tally object comes back. With `cacheDir` they are kept
+ * in a file there (one per log directory) instead, for readers that run as a
+ * fresh process each time. The returned tally is the caller's to read, not to
+ * change.
+ */
+export function repoTally(root: string, cacheDir?: string): UsageTally {
+	const files = recordsFiles(root);
+	const cacheFile =
+		cacheDir &&
+		join(
+			cacheDir,
+			`${createHash("sha256").update(files.pending).digest("hex").slice(0, 32)}.json`,
+		);
+	const memo = cacheFile ? undefined : repoTallies.get(files.pending);
+	const cached = cacheFile ? readTallyCache(cacheFile) : (memo?.cache ?? {});
+
+	const pending = advance(files.pending, cached.pending);
+	const synced = advance(files.synced, cached.synced);
+	const key = [pending, synced]
+		.map((r) => (r ? `${r.file.ino}:${r.size}` : "-"))
+		.join("|");
+	if (memo?.key === key) return memo.tally;
+
+	const cache = { pending: pending?.file, synced: synced?.file };
+	const reads = [pending, synced].flatMap((r) => (r ? [r] : []));
+	const tally = mergeTallies(
+		...reads.map((r) => r.file.tally),
+		tallyRecords(reads.flatMap((r) => r.tail)),
+	);
+	if (cacheFile) writeTallyCache(cacheFile, cache);
+	else repoTallies.set(files.pending, { cache, key, tally });
+	return tally;
 }
 
 export interface RecordsResult {
@@ -243,8 +572,7 @@ export class Session {
 	private readonly harness: string = "";
 	private readonly harnessVersion?: string;
 	private readonly path: string;
-	private readonly fileName: string;
-	private readonly syncedFileName: string;
+	private readonly files: LogFiles;
 	private readonly rep: string;
 	private readonly branch: string;
 	private readonly user: { name: string; email: string };
@@ -279,8 +607,7 @@ export class Session {
 
 		this.path = dataDir(root);
 		migrateLegacyDir(root, this.path);
-		this.fileName = "usage.jsonl";
-		this.syncedFileName = "synced.jsonl";
+		this.files = logFiles(this.path);
 		mkdirSync(this.path, { recursive: true });
 		this.loadHistory();
 	}
@@ -306,27 +633,21 @@ export class Session {
 		return readRepoRecords(this.cwd);
 	}
 
-	private rawLines(fileName: string): string[] {
-		return rawLines(join(this.path, fileName));
-	}
-
 	private archive(lines: string[]): void {
 		const moved = new Set(lines);
 		appendFileSync(
-			join(this.path, this.syncedFileName),
+			this.files.synced,
 			lines.map((line) => `${line}\n`).join(""),
 		);
-		const file = join(this.path, this.fileName);
-		const kept = this.rawLines(this.fileName).filter(
-			(line) => !moved.has(line),
-		);
+		const file = this.files.pending;
+		const kept = rawLines(file).filter((line) => !moved.has(line));
 		writeFileSync(`${file}.tmp`, kept.join("\n"));
 		renameSync(`${file}.tmp`, file);
 	}
 
 	public async syncPending(): Promise<void> {
 		const pending: { line: string; record: AgentTurnRecord }[] = [];
-		for (const line of this.rawLines(this.fileName)) {
+		for (const line of rawLines(this.files.pending)) {
 			try {
 				pending.push({ line, record: JSON.parse(line) as AgentTurnRecord });
 			} catch {
@@ -340,12 +661,9 @@ export class Session {
 	}
 
 	private loadHistory() {
-		for (const rec of this.readRecords()) {
-			for (const turn of rec.turns ?? []) {
-				this.totalTokens += Number(turn.totalUsage?.tok) || 0;
-				this.totalCost += Number(turn.totalUsage?.cst) || 0;
-			}
-		}
+		const tally = tallyRecords(this.readRecords());
+		this.totalTokens += tally.tokens;
+		this.totalCost += tally.cost;
 	}
 
 	public addMetadata(data: Record<string, unknown>) {
@@ -409,7 +727,7 @@ export class Session {
 
 		const record = this.currentAgentTurn;
 		const line = JSON.stringify(record);
-		appendFileSync(join(this.path, this.fileName), `${line}\n`);
+		appendFileSync(this.files.pending, `${line}\n`);
 		this.currentAgentTurn = undefined;
 
 		if (await this.ingest([record])) this.archive([line]);
