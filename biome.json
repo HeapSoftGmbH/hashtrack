@@ -1,6 +1,13 @@
 {
 	"$schema": "https://biome.sh/schemas/2.5.14/schema.json",
+	"vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
 	"files": {
-		"includes": ["**", "!**/dist", "!apps/opencode/web", "!packages/local-web"]
+		"includes": [
+			"**",
+			"!**/dist",
+			"!apps/opencode/web",
+			"!packages/local-web",
+			"!**/.claude-plugin/types"
+		]
 	}
 }

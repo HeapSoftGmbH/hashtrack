@@ -1,5 +1,13 @@
 {
-	"exclude": ["node_modules", "packages/local-web"],
+	// apps/claude's UI module (hooks/, types/) typechecks against the engine's
+	// own declarations and JSX factory, which the root settings (react-jsx)
+	// would fight: see apps/claude/hooks/tsconfig.json.
+	"exclude": [
+		"node_modules",
+		"packages/local-web",
+		"apps/claude/hooks",
+		"apps/claude/types"
+	],
 	"compilerOptions": {
 		// Environment setup & latest features
 		"lib": ["ESNext"],
