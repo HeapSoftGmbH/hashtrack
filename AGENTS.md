@@ -9,7 +9,8 @@ Bun workspaces monorepo:
 - `packages/core` — core. `Session` class: appends turn records, loads repo totals from history. **Harness-agnostic — no imports from any agent SDK here.** Owns the shared `Usage`, `Tool`, `AgentTurnRecord` types.
 - `apps/pi` — pi extension (`extensions/index.ts`). Maps pi events → `Session`.
 - `apps/opencode` — opencode v2 plugin. `src/index.ts` is the server part (maps opencode events → `Session`, registers the `hashtrack` RPC); `src/tui.tsx` adds the repo total to the terminal footer and a `/hashtrack` command; `src/gui.tsx` does the same for OpenCode Desktop; `src/web.ts` serves the dashboard.
-- `apps/claude`, `apps/copilot` — placeholders. Goal: same-core adapters for other harnesses.
+- `apps/claude` — Claude Code plugin (`hashtrack`). Hooks (`hooks/hooks.json`) run `node dist/hook.js <action>`; `src/transcript.ts` folds the session transcript into turns (one per `message.id`), `src/pricing.ts` prices them (transcripts carry no cost), `src/hook.ts` maps hook events → `Session`. Each hook is a fresh process, so a per-session cursor in `$CLAUDE_PLUGIN_DATA` marks what is already recorded; uploads run in a detached `sync` child. The same `hooks.json` names a UI module under `modules` (`hooks/register.tsx`, runs in Claude's UI engine, not Node): the repo total as a footer button that opens a details pane, read from `node dist/hook.js totals` (core's `repoTally` folds the log, reading only lines appended since the last call; `src/summary.ts` ranks it). The module cannot import workspace packages, so `hooks/brand.ts` copies the mark, color and formatters from `packages/lib`, and `src/brand.spec.ts` fails when they drift. The module's tests are `hooks/*.test.tsx`, run with `bun run test:claude-ui` (`claude plugin test apps/claude`); the recorder's Bun tests are `src/*.spec.ts`, so the two runners never pick up each other's files.
+- `apps/copilot` — placeholder. Goal: same-core adapters for other harnesses.
 - `packages/lib` — formatters and brand constants shared by the adapters.
 - `packages/local-web` — local viewer.
 
@@ -19,8 +20,9 @@ Shared types: `packages/core` defines and re-exports `AgentTurnRecord`, `Tool`, 
 
 ```bash
 bun install
-bun run test:extensions   # packages/core + both adapters
+bun run test:extensions   # packages/core, packages/lib + the adapters
 bun run test:web          # packages/local-web (vitest)
+bun run test:claude-ui    # apps/claude UI module (needs the claude CLI)
 bun run lint        # biome check .
 bun run lint:fix
 ```
@@ -51,7 +53,7 @@ bun run lint:fix
 
 - `packages/local-web` uses **vitest** (`bun run test:web` from the repo root, or `bun run --cwd packages/local-web test`), not `bun test` — bun can't run `.svelte` tests.
 - **Never write tests for `src/lib/components/ui`** — vendored shadcn-svelte, not ours. It's excluded in the vitest config (`test.exclude`).
-- Do not run bare `bun test`: it scans the whole repo and therefore also collects the vitest suites under `packages/local-web`, which fail under bun. `bun run test:extensions` runs `packages/core`, `packages/lib` and both adapters.
+- Do not run bare `bun test`: it scans the whole repo and therefore also collects the vitest suites under `packages/local-web`, which fail under bun. `bun run test:extensions` runs `packages/core`, `packages/lib` and the adapters.
 - Tests colocate as `*.test.ts` next to the code. Pure logic = plain vitest; Svelte components = `mount` from `svelte` + jsdom.
 - `apps/opencode/src/gui-stats.test.ts` also runs in a browser-runtime pass (`bun run test:gui`, `--conditions=browser`); its Suspense regression test is skipped in the plain node run, so `test:extensions` runs that file twice on purpose.
 - Component tests that assert chart content after mount must wait a tick — charts draw after the stubbed ResizeObserver reports a size.
