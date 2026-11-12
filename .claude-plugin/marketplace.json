@@ -1,0 +1,12 @@
+{
+	"name": "hashtrack",
+	"description": "Hashtrack — token & cost tracking for AI coding agents",
+	"owner": { "name": "HeapSoft GmbH" },
+	"plugins": [
+		{
+			"name": "hashtrack",
+			"description": "Token & cost tracking for Claude Code: records each turn to a per-repo usage log and shows the repo total in the prompt footer, with a details pane.",
+			"source": { "source": "npm", "package": "@hashtrack/claude" }
+		}
+	]
+}

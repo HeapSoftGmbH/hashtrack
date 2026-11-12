@@ -1,0 +1,34 @@
+{
+	"name": "@hashtrack/claude",
+	"version": "0.1.0",
+	"description": "Token & cost tracking for Claude Code, with the repo total in the prompt footer",
+	"license": "Apache-2.0",
+	"type": "module",
+	"files": [
+		".claude-plugin/plugin.json",
+		".claude-plugin/icon.png",
+		"hooks",
+		"!hooks/*.test.tsx",
+		"types",
+		"dist",
+		"LICENSE"
+	],
+	"keywords": [
+		"hashtrack",
+		"claude-code-plugin"
+	],
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/HeapSoftGmbH/hashtrack"
+	},
+	"scripts": {
+		"build": "bun build src/main.ts --outfile dist/hook.js --target=node --format=esm",
+		"prepack": "bun run build",
+		"test:ui": "claude plugin test ."
+	},
+	"devDependencies": {
+		"@hashtrack/core": "workspace:*",
+		"@hashtrack/lib": "workspace:*",
+		"@types/bun": "^1.4.3"
+	}
+}

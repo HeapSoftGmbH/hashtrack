@@ -12,6 +12,15 @@
         "typescript": "catalog:",
       },
     },
+    "apps/claude": {
+      "name": "@hashtrack/claude",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@hashtrack/core": "workspace:*",
+        "@hashtrack/lib": "workspace:*",
+        "@types/bun": "^1.4.3",
+      },
+    },
     "apps/opencode": {
       "name": "@hashtrack/opencode",
       "version": "0.1.2",
@@ -373,6 +382,8 @@
     "@gar/promise-retry": ["@gar/promise-retry@1.0.3", "", {}, "sha512-GmzA9ckNokPypTg10pgpeHNQe7ph+iIKKmhKu3Ob9ANkswreCx7R3cKmY781K8QK3AqVL3xVh9A42JvIAbkkSA=="],
 
     "@google/genai": ["@google/genai@2.21.0", "", { "dependencies": { "google-auth-library": "^10.3.0", "p-retry": "^4.6.2", "protobufjs": "^7.5.4", "ws": "^8.18.0" }, "peerDependencies": { "@modelcontextprotocol/sdk": "^1.25.2" }, "optionalPeers": ["@modelcontextprotocol/sdk"], "hasInstallScript": true }, "sha512-+PDtco2/Z0ONdzCGekCoCT+O1VJS9xJQNN4XzQpXG/t3El/SWWMkCWlFRO1KmivOHPa4Q0VjUYu1HBKCZ/v33Q=="],
+
+    "@hashtrack/claude": ["@hashtrack/claude@workspace:apps/claude"],
 
     "@hashtrack/core": ["@hashtrack/core@workspace:packages/core"],
 

@@ -1,0 +1,20 @@
+{
+	// The UI module type-checks against the engine's own declarations and its
+	// global `h` JSX factory, written to ../.claude-plugin/types/ once the
+	// plugin has loaded (claude --plugin-dir apps/claude). src/ uses ../tsconfig.json.
+	"compilerOptions": {
+		"target": "es2023",
+		"lib": ["es2023"],
+		"module": "esnext",
+		"moduleResolution": "bundler",
+		"strict": true,
+		"noUncheckedIndexedAccess": true,
+		"noEmit": true,
+		"skipLibCheck": true,
+		"jsx": "react",
+		"jsxFactory": "h",
+		"jsxFragmentFactory": "Fragment",
+		"typeRoots": ["../.claude-plugin/types"]
+	},
+	"include": [".", "../types"]
+}

@@ -1,0 +1,15 @@
+{
+	"name": "hashtrack",
+	"displayName": "Hashtrack",
+	"version": "0.1.0",
+	"description": "Token & cost tracking for Claude Code: records each turn to a per-repo usage log and shows the repo total in the prompt footer, with a details pane.",
+	"author": {
+		"name": "FrediLehmann"
+	},
+	"homepage": "https://hashtrack.ai",
+	"repository": "https://github.com/HeapSoftGmbH/hashtrack",
+	"keywords": ["hashtrack", "usage", "tokens", "cost"],
+	"license": "Apache-2.0",
+	"icon": "./.claude-plugin/icon.png",
+	"types": "./types/index.d.ts"
+}

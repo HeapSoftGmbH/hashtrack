@@ -1,0 +1,54 @@
+{
+	"description": "hashtrack: record each agent burst to <git-root>/.hashtrack/usage.jsonl, and show the repo total in the prompt footer",
+	"modules": ["./register.tsx"],
+	"hooks": {
+		"SessionStart": [
+			{
+				"matcher": "startup|resume|clear",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node",
+						"args": ["${CLAUDE_PLUGIN_ROOT}/dist/hook.js", "start"],
+						"timeout": 10
+					}
+				]
+			}
+		],
+		"Stop": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node",
+						"args": ["${CLAUDE_PLUGIN_ROOT}/dist/hook.js", "stop"],
+						"timeout": 10
+					}
+				]
+			}
+		],
+		"SubagentStop": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node",
+						"args": ["${CLAUDE_PLUGIN_ROOT}/dist/hook.js", "subagent-stop"],
+						"timeout": 10
+					}
+				]
+			}
+		],
+		"SessionEnd": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node",
+						"args": ["${CLAUDE_PLUGIN_ROOT}/dist/hook.js", "end"]
+					}
+				]
+			}
+		]
+	}
+}
