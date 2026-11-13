@@ -5,8 +5,13 @@ The hashtrack extensions talk to one HTTP API. `POST /api/ingest` uploads record
 API token, so the dashboard shows the server's copy of a repository instead of
 the local `.hashtrack` log whenever a token is configured.
 
-Base URL is `https://hashtrack.ai` unless the adapter config sets
+Base URL is `https://www.hashtrack.ai` unless the adapter config sets
 `url` (`~/.pi/hashtrack/config.json` or `~/.config/opencode/hashtrack/config.json`).
+
+Use the `www` host in `url` too. The apex `https://hashtrack.ai` answers with a
+cross-origin `308` to `www.hashtrack.ai`, and `fetch` drops the `Authorization`
+header on cross-origin redirects, so the request reaches the API unauthenticated
+(`401`) and the record stays pending forever.
 
 ## Authentication
 

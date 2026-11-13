@@ -398,7 +398,9 @@ describe("cloud upload", () => {
 		session.startAgent({ dateTimeISOString: "t", model: "m" });
 		session.addTurn({ tools: [], totalUsage: usage(10, 0.1) });
 		await session.flush();
-		expect(calls[0]?.url).toBe("https://hashtrack.ai/api/ingest");
+		// must be the canonical www host: the apex 308-redirects cross-origin and
+		// fetch drops the authorization header on that hop
+		expect(calls[0]?.url).toBe("https://www.hashtrack.ai/api/ingest");
 	});
 
 	test("no token: no request, record stays pending", async () => {

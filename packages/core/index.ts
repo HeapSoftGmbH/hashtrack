@@ -36,6 +36,8 @@ interface Turn {
 	totalUsage: Usage; // Total Usage
 }
 
+export const DEFAULT_CLOUD_URL = "https://www.hashtrack.ai";
+
 export interface CloudConfig {
 	url?: string; // API base URL; defaults to DEFAULT_CLOUD_URL
 	token?: string; // Bearer token; auth flow added by the caller
@@ -577,7 +579,7 @@ export class Session {
 	private readonly branch: string;
 	private readonly user: { name: string; email: string };
 	private readonly cloud?: CloudConfig = {
-		url: "https://hashtrack.ai",
+		url: DEFAULT_CLOUD_URL,
 	};
 	private readonly cwd?: string;
 

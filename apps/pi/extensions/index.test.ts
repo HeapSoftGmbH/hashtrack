@@ -299,7 +299,7 @@ describe("pi adapter", () => {
 			await emit("agent_start", {});
 			await emit("turn_end", {});
 			await emit("agent_settled");
-			expect(calls).toEqual(["https://hashtrack.ai/api/ingest"]);
+			expect(calls).toEqual(["https://www.hashtrack.ai/api/ingest"]);
 		} finally {
 			globalThis.fetch = originalFetch;
 			cleanup();
