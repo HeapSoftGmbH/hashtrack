@@ -38,7 +38,7 @@ Both UIs read the same RPC (`./rpc`) and show the current repository's totals ne
 The mark is the hashtrack favicon drawn as braille in the favicon orange (`#bb4d00`), since a terminal status line cannot show the SVG. Desktop draws the real favicon next to the text instead.
 
 - **TUI** (`./tui`): the `prompt.footer.status` and `home.footer.status` slots, refreshed every 10 s and on `session.idle` / `session.execution.succeeded`.
-- **Desktop** (`./gui-experimental`): the `session.header` slot; clicking the totals opens the dashboard. Re-read when the session's directory changes.
+- **Desktop** (`./gui-experimental`): the `session.header` slot; clicking the totals opens the dashboard. While the side region is open the badge collapses to the favicon only, so it fits the narrower header. Re-read when the session's directory changes.
 - Totals come from every record in `<git-root>/.hashtrack` (pending `usage.jsonl` plus archived `synced.jsonl`), so they survive uploads.
 
 ## Dashboard

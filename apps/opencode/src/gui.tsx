@@ -20,6 +20,7 @@ const faviconUrl = `data:image/svg+xml,${encodeURIComponent(favicon)}`;
 function Totals(props: {
 	session: MountedSession;
 	active: boolean;
+	compact(): boolean;
 	load(directory: string): Promise<StatsResult>;
 	open(): void;
 	tooltip: string;
@@ -65,7 +66,7 @@ function Totals(props: {
 						alt=""
 						style={{ width: "12px", height: "12px", display: "block" }}
 					/>
-					{label()}
+					<Show when={!props.compact()}>{label()}</Show>
 				</Show>
 			</props.ui.Button>
 		</props.ui.Tooltip>
@@ -110,6 +111,7 @@ export default Plugin.define({
 				<Totals
 					session={input.session}
 					active={input.active}
+					compact={() => ctx.layout.side.opened(input.session)}
 					load={load}
 					open={() => void openDashboard(input.session.directory)}
 					tooltip={ctx.t("openDashboard")}
