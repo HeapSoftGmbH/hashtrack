@@ -1,6 +1,6 @@
 {
 	"name": "@hashtrack/claude",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "Token & cost tracking for Claude Code, with the repo total in the prompt footer",
 	"license": "Apache-2.0",
 	"type": "module",
