@@ -33,7 +33,7 @@ bun run lint:fix
 
 - Short keys (`t`, `sid`, `sn`, `h`, `mod`, `rep`, `ti`, `tools`, `totalUsage`) are **frozen**. New fields may be added; existing keys are never renamed or removed.
 - Two files in `.hashtrack/`: `usage.jsonl` is the pending queue (not uploaded yet), `synced.jsonl` is the archive of uploaded records. `Session.readRecords()` (and the read-only `readRepoRecords(cwd)` helper) returns both, in that order — dashboards and totals never lose history.
-- Storage: `<git-root>/.hashtrack/usage.jsonl`. Repo identity = git remote URL (fallback: git root, then cwd).
+- Storage: `<git-root>/.hashtrack/usage.jsonl`, where the git root is the main checkout's root — linked worktrees share it. Repo identity = git remote URL (fallback: that shared root, then cwd).
 - Old/unknown lines must keep parsing — `loadHistory` skips malformed lines; keep that behavior.
 - Buffer turns in memory, flush once on idle (`agent_settled`-equivalent) and shutdown. One `appendFileSync` per burst — concurrent agent sessions on the same repo stay safe. Trade-off: hard kill loses the unflushed burst. Exception: uploading appends to `synced.jsonl` and then rewrites `usage.jsonl` (tmp + rename), so a session appending in that window can lose a line.
 

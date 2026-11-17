@@ -43,8 +43,9 @@ Authorization: Bearer wit_<token>
 | `until` | no       | ISO-8601 string | Inclusive upper bound on the record time (`t` / `recorded_at`).             |
 
 `rep` is the git remote URL when the repository has one, otherwise the absolute
-git root (and the working directory when it is not a git repository). The client
-gets it from the same code that writes `AgentTurnRecord.rep`, so the value round-trips.
+root of the main checkout (shared by its linked worktrees), and the working
+directory when it is not a git repository. The client gets it from the same code
+that writes `AgentTurnRecord.rep`, so the value round-trips.
 
 All parameters are URL-encoded. `since` and `until` are only filters; omitting
 both returns the full history for that repository.

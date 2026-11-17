@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { execFileSync } from "node:child_process";
 import {
 	existsSync,
 	mkdirSync,
@@ -14,6 +15,7 @@ import {
 	readCloudRecords,
 	readRepoRecords,
 	repoIdentity,
+	repoRoot,
 	resolveRepoRecords,
 	Session,
 	type Usage,
@@ -550,6 +552,111 @@ describe("storage path", () => {
 		} finally {
 			rmSync(other, { recursive: true, force: true });
 		}
+	});
+});
+
+describe("worktrees", () => {
+	let mainRepo: string;
+	let worktree: string;
+
+	const git = (dir: string, ...args: string[]) =>
+		execFileSync("git", args, { cwd: dir, stdio: "ignore" });
+
+	beforeEach(() => {
+		mainRepo = join(cwd, "main");
+		worktree = join(cwd, "wt");
+		mkdirSync(mainRepo);
+		git(mainRepo, "init", "-q");
+		git(
+			mainRepo,
+			"-c",
+			"user.name=test",
+			"-c",
+			"user.email=test@example.com",
+			"commit",
+			"-q",
+			"--allow-empty",
+			"-m",
+			"init",
+		);
+		git(mainRepo, "worktree", "add", "-q", "-b", "feature", worktree);
+	});
+
+	const sharedLog = (...names: string[]) =>
+		join(mainRepo, ".hashtrack", ...names);
+
+	test("repoRoot and repoIdentity resolve to the main checkout", () => {
+		expect(repoRoot(worktree)).toBe(mainRepo);
+		expect(repoIdentity(worktree)).toBe(mainRepo);
+	});
+
+	test("a session in a worktree writes the shared log", async () => {
+		const session = new Session({
+			sessionId: "s1",
+			harness: "pi",
+			cwd: worktree,
+		});
+		session.startAgent({ dateTimeISOString: "t", model: "m" });
+		session.addTurn({ tools: [], totalUsage: usage(1, 0) });
+		await session.flush();
+
+		const stored = JSON.parse(
+			readFileSync(sharedLog("usage.jsonl"), "utf8").trim(),
+		) as AgentTurnRecord;
+		expect(stored).toMatchObject({ sid: "s1", branch: "feature" });
+		expect(stored.rep).toBe(mainRepo);
+		expect(existsSync(join(worktree, ".hashtrack"))).toBe(false);
+		expect(readRepoRecords(worktree).map((r) => r.sid)).toEqual(["s1"]);
+	});
+
+	test("folds a worktree's pre-fix local log into the shared one", () => {
+		mkdirSync(join(worktree, ".hashtrack"), { recursive: true });
+		writeFileSync(
+			join(worktree, ".hashtrack", "usage.jsonl"),
+			`${JSON.stringify(rec("old"))}\n`,
+		);
+		mkdirSync(sharedLog(), { recursive: true });
+		writeFileSync(
+			sharedLog("usage.jsonl"),
+			`${JSON.stringify(rec("shared"))}\n`,
+		);
+
+		const session = new Session({
+			sessionId: "s1",
+			harness: "pi",
+			cwd: worktree,
+		});
+
+		expect(session.totalTokens).toBe(2); // shared + folded history
+		const stored = readFileSync(sharedLog("usage.jsonl"), "utf8")
+			.trim()
+			.split("\n")
+			.map((line) => JSON.parse(line) as AgentTurnRecord);
+		expect(stored.map((r) => r.sid)).toEqual(["shared", "old"]);
+		expect(existsSync(join(worktree, ".hashtrack"))).toBe(false);
+		expect(readRepoRecords(worktree).map((r) => r.sid)).toEqual([
+			"shared",
+			"old",
+		]);
+	});
+
+	test("a line already in the shared log is not copied twice", () => {
+		const line = JSON.stringify(rec("old"));
+		mkdirSync(join(worktree, ".hashtrack"), { recursive: true });
+		writeFileSync(join(worktree, ".hashtrack", "usage.jsonl"), `${line}\n`);
+		mkdirSync(sharedLog(), { recursive: true });
+		writeFileSync(sharedLog("usage.jsonl"), `${line}\n`);
+
+		const session = new Session({
+			sessionId: "s1",
+			harness: "pi",
+			cwd: worktree,
+		});
+
+		expect(session.totalTokens).toBe(1);
+		expect(
+			readFileSync(sharedLog("usage.jsonl"), "utf8").trim().split("\n"),
+		).toHaveLength(1);
 	});
 });
 

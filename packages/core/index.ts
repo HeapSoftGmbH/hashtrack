@@ -9,10 +9,11 @@ import {
 	readFileSync,
 	readSync,
 	renameSync,
+	rmSync,
 	statSync,
 	writeFileSync,
 } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 export interface Usage {
 	in: number; // Input Token
@@ -53,7 +54,7 @@ export interface AgentTurnRecord {
 	turns: Turn[]; // Agent Turns
 	skills?: string[]; // Raw skill names invoked during this session
 	metadata?: object; // Other Agent Specific Data
-	rep: string; // Repository (git remote URL or git root; cwd if not a repo)
+	rep: string; // Repository (git remote URL or shared git root; cwd if not a repo)
 	branch?: string; // Git branch at session start
 	user?: { name: string; email: string }; // Git user config at session start
 }
@@ -70,14 +71,37 @@ function git(cwd: string | undefined, cmd: string): string {
 	}
 }
 
-/** Repository root for a working directory: the git root, else the directory itself. */
+/** The working-tree root git reports for `cwd`; a linked worktree's own root, not the main checkout. */
+function gitTop(cwd?: string): string {
+	return git(cwd, "git rev-parse --show-toplevel");
+}
+
+/** Git's common directory as an absolute path (relative output is resolved against `cwd`). */
+function commonGitDir(cwd?: string): string {
+	const dir =
+		git(cwd, "git rev-parse --path-format=absolute --git-common-dir") ||
+		git(cwd, "git rev-parse --git-common-dir");
+	return dir ? resolve(cwd ?? process.cwd(), dir) : "";
+}
+
+/**
+ * Repository root for a working directory: the root of the main checkout, else
+ * the directory itself. A linked worktree resolves to the main checkout, so
+ * every worktree of one repo shares a single `.hashtrack` directory.
+ */
 export function repoRoot(cwd?: string): string {
-	return git(cwd, "git rev-parse --show-toplevel") || cwd || process.cwd();
+	const top = gitTop(cwd);
+	if (!top) return cwd || process.cwd();
+	const common = commonGitDir(cwd);
+	// A linked worktree's common dir is the main checkout's `.git`, whose parent
+	// is the shared root. In a bare repo or a submodule it points elsewhere, and
+	// only the checkout we are in can hold the log.
+	return common && basename(common) === ".git" ? dirname(common) : top;
 }
 
 /**
  * Repository identity, exactly as stored in `AgentTurnRecord.rep`:
- * the git remote URL, else the git root (or the working directory).
+ * the git remote URL, else the shared root (or the working directory).
  */
 export function repoIdentity(cwd?: string): string {
 	return git(cwd, "git config --get remote.origin.url") || repoRoot(cwd);
@@ -128,6 +152,37 @@ function migrateLegacyDir(root: string, target: string): void {
 		renameSync(legacy, target);
 	} catch {
 		// leave it: readers still fall back to the legacy directory
+	}
+}
+
+/**
+ * Before worktrees shared one log, each wrote its own `<worktree>/.hashtrack`.
+ * Fold that directory into the shared one so its history keeps counting, then
+ * drop it. Lines the shared log already has are not copied twice. Only a write
+ * path (the Session constructor) migrates; readers stay read-only.
+ */
+function migrateWorktreeDir(top: string, root: string, target: string): void {
+	if (process.env.HASHTRACK_DIR || !top || top === root) return;
+	const local = recordsDir(top);
+	if (local === target || !existsSync(local)) return;
+
+	try {
+		for (const name of ["usage.jsonl", "synced.jsonl"] as const) {
+			const from = join(local, name);
+			if (!existsSync(from)) continue;
+			const known = new Set(rawLines(join(target, name)));
+			const lines = rawLines(from).filter(
+				(line) => line.trim() && !known.has(line),
+			);
+			if (lines.length === 0) continue;
+			appendFileSync(
+				join(target, name),
+				lines.map((line) => `${line}\n`).join(""),
+			);
+		}
+		rmSync(local, { recursive: true, force: true });
+	} catch {
+		// leave it: the next session in this worktree tries again
 	}
 }
 
@@ -611,6 +666,7 @@ export class Session {
 		migrateLegacyDir(root, this.path);
 		this.files = logFiles(this.path);
 		mkdirSync(this.path, { recursive: true });
+		migrateWorktreeDir(gitTop(this.cwd), root, this.path);
 		this.loadHistory();
 	}
 
@@ -618,6 +674,7 @@ export class Session {
 		return git(this.cwd, cmd);
 	}
 
+	/** The shared root: linked worktrees all resolve to the main checkout. */
 	private gitRoot(): string {
 		return repoRoot(this.cwd);
 	}

@@ -1,6 +1,6 @@
 # @hashtrack/opencode
 
-Persistent agent analytics for [opencode](https://opencode.ai) v2. Records the tokens and dollars spent in every opencode session into the same per-repo log the other hashtrack adapters use: `<git-root>/.hashtrack/usage.jsonl` and `<git-root>/.hashtrack/synced.jsonl`. Shows the running repo total in the TUI and in OpenCode Desktop, and opens the detailed web dashboard on demand.
+Persistent agent analytics for [opencode](https://opencode.ai) v2. Records the tokens and dollars spent in every opencode session into the same per-repo log the other hashtrack adapters use: `<git-root>/.hashtrack/usage.jsonl` and `<git-root>/.hashtrack/synced.jsonl` (the main checkout's root, shared by linked worktrees). Shows the running repo total in the TUI and in OpenCode Desktop, and opens the detailed web dashboard on demand.
 
 ## Install
 
